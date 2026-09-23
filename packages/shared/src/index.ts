@@ -1,10 +1,11 @@
 /**
  * The contract surface shared by the API and the web client.
  *
- * Phase 3 adds the Appendix A kit schema and its inferred domain types here.
  * Nothing else belongs in this package: no helpers, no utilities, no logic that
  * only one side needs.
  */
+
+export * from './kit.schema.js';
 
 /**
  * Every error code the API is allowed to return. Fixed up front so the HTTP

@@ -11,7 +11,7 @@ import {
   disconnectTestDatabase,
 } from '../test-support/database.js';
 
-const database = await connectTestDatabase();
+const database = await connectTestDatabase(import.meta.url);
 const app = createApp();
 
 const CREDENTIALS = { email: 'ada@example.com', password: 'a-sufficient-password' };

@@ -4,9 +4,9 @@ Turns a pasted job description, a company website and a number of days before th
 interview into a structured, reshapeable interview preparation kit: a company brief,
 a role breakdown, a categorised question bank, flashcards and a day-by-day schedule.
 
-> **Status: Phase 2 (authentication).** The monorepo, API skeleton, database
-> connection, error model, web shell and the auth layer are in place. Retrieval, the
-> generation pipeline and the builder UI arrive in later phases.
+> **Status: Phase 3 (kit contract and persistence).** Foundation, authentication,
+> the Appendix A schema, kit persistence and owner-scoped reads are in place.
+> Retrieval, the generation pipeline and the builder UI arrive in later phases.
 
 ## Tech stack
 
@@ -122,6 +122,57 @@ Other decisions in this layer:
 The login rate limiter is an in-memory fixed window, so its budget is per-process. On more
 than one instance the correct fix is a shared store, not a cleverer local one.
 
+## The kit contract
+
+The Appendix A structure is defined once, as a Zod schema, in
+[`packages/shared/src/kit.schema.ts`](packages/shared/src/kit.schema.ts). It lives in the
+shared package because the API validates against it, the batch entry point validates
+against it, and the builder UI edits against it — one definition, so the two copies
+cannot drift. Field names are copied verbatim and are not open to improvement.
+
+A shape check alone is not enough: a kit can have every field correctly typed and still
+be incoherent. So the schema also enforces referential integrity — every
+`question_ids` entry in the schedule names a question that exists (called out by name in
+the brief), every `requirement_ids` names a real requirement, ids are unique, and
+`schedule.days` matches `days_available` with day numbers running `1..N`.
+
+### Identifiers
+
+`r1..rn`, `q1..qn`, `f1..fn`, assigned by code and never by the model — they are what
+make coverage checkable rather than a matter of opinion.
+
+Counters are monotonic and stored outside the contract object, next to provenance.
+**Deleting an item never decrements its counter**, so an id is never reissued and a stale
+reference can never silently re-attach to a different item.
+
+### Generated / edited / pinned
+
+Provenance is a sidecar map keyed by item id, not extra fields on each question, so the
+object handed to the grader stays exactly the shape the brief specifies and the batch
+command can emit it untouched. One predicate, `isProtected`, decides what a regeneration
+may replace: generated and untouched, and nothing else.
+
+### Storage
+
+The kit is persisted as a Mongoose `Mixed` field. Mirroring the contract in a second
+schema would invite the two copies to drift, and the contract is the thing being graded —
+so Zod owns it and Mongo just holds the document. The cost is that Mongoose cannot detect
+mutations inside a `Mixed` field, so every write goes through the repository, which calls
+`markModified`. There is a test for that specific trap.
+
+### Ownership
+
+```
+authenticated session userId -> Kit.userId -> repository query
+```
+
+`userId` is never read from a request body, query string or path parameter. The repository
+has no unscoped `findById`, so there is no call site at which ownership can be forgotten.
+
+Requesting a kit that belongs to someone else returns **404, not 403** — a 403 would
+confirm the id exists, which is precisely what someone probing for other people's kits
+wants to learn.
+
 ## Testing
 
 ```bash
@@ -134,6 +185,9 @@ Tests split deliberately by what they need:
   a database and always run.
 - **Integration suites** run against a real MongoDB from `MONGODB_TEST_URI` and **skip with a
   visible notice** when none is reachable, so `npm test` passes from a clean clone either way.
+  Each test file gets its own database, named from its module URL: Vitest runs files in
+  parallel and these suites clear collections between tests, so on a shared database one file
+  wipes another's fixtures mid-test — a failure that only ever appears in a full run.
 
 `mongodb-memory-server` was rejected for this: it downloads a ~100MB server binary on
 install, which stalls or fails outright on a restricted network — as it did here, hanging
