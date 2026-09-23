@@ -4,8 +4,8 @@ Turns a pasted job description, a company website and a number of days before th
 interview into a structured, reshapeable interview preparation kit: a company brief,
 a role breakdown, a categorised question bank, flashcards and a day-by-day schedule.
 
-> **Status: Phase 4 (retrieval).** Foundation, authentication, the Appendix A
-> schema, persistence and the external-retrieval subsystem are in place. The
+> **Status: Phase 5 (LLM layer).** Foundation, authentication, the Appendix A
+> schema, persistence, retrieval and the model-calling layer are in place. The
 > generation pipeline and the builder UI arrive in later phases.
 
 ## Tech stack
@@ -263,13 +263,118 @@ Serves on port 8099, matching the example in Appendix B:
 - `/broken/*` — 500s, a hanging route, an oversized body, a PDF, redirect loops and an
   off-domain redirect
 
+## The LLM layer
+
+**Provider:** Groq. **Models:** `openai/gpt-oss-120b` (primary) and
+`openai/gpt-oss-20b` (fast), both on the free tier. Everything is configured through
+`LLM_PROVIDER`, `GROQ_PRIMARY_MODEL` and `GROQ_FAST_MODEL`; **no model id appears in
+source code**, including in the tests.
+
+Pipeline stages ask for a `tier`, never a model. Nothing under `pipeline/` knows Groq
+exists, so changing provider is a config edit.
+
+### Why two models
+
+Groq's free-tier limits are **8,000 tokens per minute, bucketed per model**. Section 9
+of the brief requires five cases in fifteen minutes, which on a single model is
+15 x 8K = 120K tokens for roughly 45 calls. Routing heavy-context work to one model and
+the many small calls to the other roughly doubles the usable budget.
+
+### Counting tokens before spending them
+
+The brief warns that a pipeline falling over the first time a provider says "slow down"
+is the commonest way to lose points here. So the budget is tracked locally and calls
+**wait before being sent**, rather than backing off after a 429 — which still costs the
+request, against a cap of 1,000 per model per day.
+
+A sliding 60-second window per model tracks spend. Estimates err deliberately high
+(3.5 chars/token): over-estimating costs a short wait, under-estimating costs a 429 plus
+the request that provoked it. After each call the estimate is replaced with the actual
+`usage`, and the `x-ratelimit-remaining-tokens` / `x-ratelimit-reset-tokens` headers
+resynchronise the local view so it cannot drift over a long batch run.
+
+Concurrency is deliberately **1**. Against an 8K/minute ceiling, parallel calls mostly
+produce 429s, and the batch entry point is judged on finishing, not on speed.
+
+### Reasoning tokens — measured, not assumed
+
+The gpt-oss models are reasoning models: they spend hidden reasoning tokens from the same
+completion budget before emitting anything. Measured against the live API, asking which
+language "hola" is — a two-word answer — consumed **133 completion tokens, 111 of them
+reasoning**. A 100-token cap produced an _empty_ generation and a `json_validate_failed`
+400 that appeared to blame the schema.
+
+The completion budget is therefore floored at 512 tokens regardless of what a caller asks
+for, and the smallest realistic call costs ~300 tokens. That figure sizes the Phase 6
+budget rather than an assumption.
+
+### Structured output
+
+Strict JSON Schema (`response_format: json_schema`, `strict: true`), not loose JSON mode,
+so generation is constrained rather than merely requested. The schema is derived from the
+caller's Zod schema with Zod 4's built-in `z.toJSONSchema()` — one definition, no second
+copy to drift.
+
+If a model cannot honour strict structured output, that is a **loud failure**. Falling
+back to an unvalidated free-text call would let unchecked content reach a kit.
+
+Because a constrained decode still returns a string, the response is then unwrapped from
+any markdown fence, parsed, and validated against the Zod schema — the schema is the
+authority, never the model. A validation failure gets **exactly one** repair attempt
+quoting the error, then fails as `LLM_INVALID_RESPONSE`. No content is ever invented to
+patch a bad response.
+
+### What gets retried, and what does not
+
+| Failure                            | Retried?                                                        |
+| ---------------------------------- | --------------------------------------------------------------- |
+| 429 rate limit                     | yes, honouring `Retry-After` in seconds or as an HTTP date      |
+| 5xx, timeout, network              | yes, bounded                                                    |
+| 400 / 404 / 422                    | no — the same request fails the same way                        |
+| 401 / 403                          | no — a bad key will not fix itself, and each retry spends quota |
+| Schema the model could not satisfy | no — one repair pass instead                                    |
+
+Backoff is exponential with **full jitter**, so several stages do not wake in lockstep,
+and a total wait ceiling stops one stalled stage eating the fifteen-minute batch budget.
+
+### Untrusted content
+
+Both the pasted job description and every crawled page are text we did not write, heading
+for a model. `asUntrustedData()` wraps them in delimiters carrying a **random nonce per
+call**, and neutralises any delimiter inside the content — a page can contain the word
+`END_UNTRUSTED`, but it cannot guess the nonce needed to forge the closing marker.
+
+The defence is layered rather than rhetorical: the prompt states the boundary, the nonce
+enforces it, and every output is Zod-validated before it can enter a kit, so even a
+successful injection cannot produce a malformed kit.
+
+### Development cache
+
+200K tokens per model per day is about eight full five-case runs. `LLM_CACHE=true` caches
+responses on disk under `.llm-cache/`, keyed by provider, model and messages — never by
+the API key. Disabled in production.
+
+### Secrets
+
+The key is read from the environment only. It never appears in source, a test fixture, a
+log line, an error message or a cache key. Logs record stage, model, latency and token
+usage.
+
 ## Testing
 
 ```bash
-npm test
+npm test        # offline, deterministic, free
+npm run test:live   # two tiny real calls against Groq
 ```
 
 Tests split deliberately by what they need:
+
+- **Live provider tests** are excluded from `npm test` and run on purpose. They spend real
+  free-tier tokens, so a routine run must never touch them. They verify what documentation
+  cannot: that the configured model ids are real, that strict structured output is actually
+  honoured, that `usage` comes back, and that the rate-limit headers carry the names the
+  budgeting reads. Everything else about the LLM layer is provider-mocked, because a live
+  provider cannot be made to return a 429 or malformed JSON on demand.
 
 - **Pure suites** — password hashing, session-token generation, rate limiting — never touch
   a database and always run.

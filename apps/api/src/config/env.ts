@@ -50,7 +50,9 @@ const envSchema = z.object({
   COOKIE_SECRET: z.string().min(16, 'must be at least 16 characters'),
 
   // --- Optional until the phase that uses them -------------------------------
-  // Phase 5 (LLM layer)
+  // Phase 5 (LLM layer). The provider is named here so no pipeline stage has to
+  // know which one is behind the interface.
+  LLM_PROVIDER: z.enum(['groq']).default('groq'),
   GROQ_API_KEY: z.string().optional(),
   GROQ_PRIMARY_MODEL: z.string().default('openai/gpt-oss-120b'),
   GROQ_FAST_MODEL: z.string().default('openai/gpt-oss-20b'),

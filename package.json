@@ -26,7 +26,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "evaluate": "npm run evaluate --workspace @prep/api --",
-    "fixtures": "tsx scripts/serve-fixture-site.ts"
+    "fixtures": "tsx scripts/serve-fixture-site.ts",
+    "test:live": "vitest run --config vitest.live.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
