@@ -36,3 +36,20 @@ export interface ApiErrorBody {
     message: string;
   };
 }
+
+/** The authenticated user as the API represents it to the client. */
+export interface AuthUser {
+  id: string;
+  email: string;
+}
+
+/** Body accepted by POST /api/auth/register and POST /api/auth/login. */
+export interface CredentialsBody {
+  email: string;
+  password: string;
+}
+
+/** Body returned by register, login and GET /api/auth/me. */
+export interface AuthUserResponse {
+  user: AuthUser;
+}
