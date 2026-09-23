@@ -25,7 +25,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "evaluate": "npm run evaluate --workspace @prep/api --"
+    "evaluate": "npm run evaluate --workspace @prep/api --",
+    "fixtures": "tsx scripts/serve-fixture-site.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

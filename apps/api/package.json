@@ -14,11 +14,14 @@
   "dependencies": {
     "@prep/shared": "*",
     "bcryptjs": "^3.0.3",
+    "cheerio": "^1.2.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^18.0.3",
     "express": "^5.2.1",
     "mongoose": "^9.10.2",
+    "robots-parser": "^3.0.1",
+    "tldts": "^7.4.14",
     "zod": "^4.6.5"
   },
   "devDependencies": {

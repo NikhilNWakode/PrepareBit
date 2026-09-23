@@ -4,9 +4,9 @@ Turns a pasted job description, a company website and a number of days before th
 interview into a structured, reshapeable interview preparation kit: a company brief,
 a role breakdown, a categorised question bank, flashcards and a day-by-day schedule.
 
-> **Status: Phase 3 (kit contract and persistence).** Foundation, authentication,
-> the Appendix A schema, kit persistence and owner-scoped reads are in place.
-> Retrieval, the generation pipeline and the builder UI arrive in later phases.
+> **Status: Phase 4 (retrieval).** Foundation, authentication, the Appendix A
+> schema, persistence and the external-retrieval subsystem are in place. The
+> generation pipeline and the builder UI arrive in later phases.
 
 ## Tech stack
 
@@ -172,6 +172,96 @@ has no unscoped `findById`, so there is no call site at which ownership can be f
 Requesting a kit that belongs to someone else returns **404, not 403** — a 403 would
 confirm the id exists, which is precisely what someone probing for other people's kits
 wants to learn.
+
+## Retrieval
+
+Two independent modules behind separate interfaces, composed into one
+`ResearchResult` that later pipeline stages consume. Neither knows anything about the LLM.
+
+### Finding the hiring page
+
+The brief is explicit that a fixed list of paths is not sufficient — companies bury this
+material at `/careers`, `/jobs`, a handbook or an engineering blog. So nothing is fetched
+_because of_ its path. The crawler starts at the homepage, extracts the links the site
+actually publishes, scores them with a pure ranking function, and spends a small page
+budget on the best candidates.
+
+The fixture site exercises exactly this: `acme`'s hiring page sits at
+`/handbook/how-we-hire.html`, and the crawler reaches it second — ahead of `/about` —
+because the anchor text "How we hire" outranks everything else on the page.
+
+**A site with no hiring page is a real answer.** When nothing scores as hiring material,
+the kit records that and the run continues. The brief tests this case, and an honest
+"nothing found" is worth more than an invented process.
+
+### Crawl boundary
+
+Scope is the **registrable domain, resolved through the Public Suffix List** (`tldts`), so
+starting at `example.com` also reaches `careers.example.com` and `jobs.example.com`. A
+last-two-labels heuristic gets `example.co.uk` wrong — it would treat `co.uk` as the
+domain and let a crawl wander into an unrelated company. Hosts with no public suffix, such
+as the `localhost` fixture server, fall back to an exact hostname match.
+
+Crawling is bounded by page count (8), depth (2), response size (1.5MB), timeout (8s) and a
+politeness delay between requests. URLs are normalised before deduplication, and relative
+links are resolved against the page they came from — required, because the batch entry
+point runs against a local address.
+
+### robots.txt
+
+Fetched once per origin and parsed with `robots-parser` rather than by hand: `Allow`
+precedence, wildcards and longest-match are a known source of quiet bugs. A missing
+`robots.txt` means allowed. A declared `Crawl-delay` raises the politeness delay.
+
+### SSRF protection
+
+Every URL is validated before it is fetched, and **every redirect hop is revalidated** —
+against both the address rules and the crawl boundary. A public URL that redirects to
+`169.254.169.254` would otherwise defeat a check done only on the original input.
+
+Blocked: non-HTTP schemes, embedded credentials, and loopback, private, link-local, CGNAT,
+multicast and unspecified addresses in IPv4, IPv6 and IPv4-mapped forms. `ALLOW_PRIVATE_URLS`
+relaxes this outside production, because the batch runs against localhost fixtures.
+
+Responses are restricted to `text/html`, `application/xhtml+xml` and `text/plain`, with the
+byte cap enforced while reading rather than trusting `Content-Length`.
+
+**Known limitation:** the guard resolves the hostname and then `fetch` resolves it again, so
+a name that changes between the two could slip through — DNS-rebinding TOCTOU. Closing it
+properly means connecting to the validated address with the hostname pinned for TLS, which
+Node's `fetch` does not expose. Stated rather than papered over.
+
+### Public interview research
+
+`InterviewResearchProvider`, resolved in strict order:
+
+1. **Tavily** when `TAVILY_API_KEY` is set
+2. **DuckDuckGo** when Tavily is absent, rate-limited or failing — an HTML endpoint, not a
+   supported API, which is why it is the fallback and not the default
+3. **an explicit empty result** when both fail
+
+Both normalise to `{ title, url, snippet, source }` and are deduplicated by normalised URL.
+A search failure never fails kit generation, and when nothing useful comes back the kit says
+so — interview details are never invented to fill the gap.
+
+### Sources used
+
+Only the company's own website, crawled from the URL the user supplies, and public search
+results from Tavily or DuckDuckGo. No job boards are scraped: most block automated access,
+and the job description is pasted in directly.
+
+### Fixture sites
+
+```bash
+npm run fixtures
+```
+
+Serves on port 8099, matching the example in Appendix B:
+
+- `/acme/` — a normal site with its hiring page buried in a handbook
+- `/nohire/` — a real site with no hiring page anywhere, plus a robots-disallowed path
+- `/broken/*` — 500s, a hanging route, an oversized body, a PDF, redirect loops and an
+  off-domain redirect
 
 ## Testing
 
