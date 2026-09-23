@@ -1,0 +1,43 @@
+@import 'tailwindcss';
+
+/*
+ * Design foundation: a research workspace, not a marketing page.
+ * Neutral paper background, charcoal text, muted hairline borders, and exactly
+ * one accent used for focus and primary intent.
+ */
+@theme {
+  --color-canvas: #fbfbfa;
+  --color-surface: #ffffff;
+  --color-border: #e3e3df;
+  --color-ink: #1b1b19;
+  --color-muted: #6a6a63;
+  --color-accent: #2f5d50;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, monospace;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    line-height: 1.6;
+  }
+
+  /* Keyboard users must always be able to see where they are. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  }
+}

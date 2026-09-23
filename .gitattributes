@@ -1,0 +1,7 @@
+# Normalise line endings so the repo is identical on Windows, macOS and the
+# Linux hosts it is built and graded on.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary

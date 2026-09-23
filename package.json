@@ -1,0 +1,42 @@
+{
+  "name": "interview-prep-kit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Turns a job description and a company URL into a structured interview preparation kit.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "postinstall": "npm run build --workspace @prep/shared",
+    "dev": "concurrently -n shared,api,web -c gray,cyan,magenta \"npm:dev:shared\" \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:shared": "npm run dev --workspace @prep/shared",
+    "dev:api": "npm run dev --workspace @prep/api",
+    "dev:web": "npm run dev --workspace @prep/web",
+    "build": "npm run build --workspace @prep/shared && npm run build --workspace @prep/api && npm run build --workspace @prep/web",
+    "start": "npm run start --workspace @prep/api",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "evaluate": "npm run evaluate --workspace @prep/api --"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@next/eslint-plugin-next": "^16.3.6",
+    "concurrently": "^10.0.5",
+    "eslint": "^10.11.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.9",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^5.0.1"
+  }
+}
