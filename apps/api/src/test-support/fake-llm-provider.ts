@@ -33,13 +33,17 @@ export interface FakeLlmProvider extends LlmProvider {
   lastPrompt(): string;
 }
 
-type Responder = (call: RecordedCall) => unknown;
+/**
+ * May return a promise, so a test can make a stage genuinely slow and observe
+ * how the pipeline interleaves it with work that does not depend on it.
+ */
+type Responder = (call: RecordedCall) => unknown | Promise<unknown>;
 
 export function createFakeProvider(responses: unknown[] | Responder): FakeLlmProvider {
   const calls: RecordedCall[] = [];
   const queue = Array.isArray(responses) ? [...responses] : null;
 
-  function nextValue(call: RecordedCall): unknown {
+  function nextValue(call: RecordedCall): unknown | Promise<unknown> {
     if (queue) {
       if (queue.length === 0) {
         throw new Error(`Fake provider ran out of responses at call ${calls.length}`);
@@ -76,24 +80,24 @@ export function createFakeProvider(responses: unknown[] | Responder): FakeLlmPro
       return last.prompt;
     },
 
-    generateText(messages, options): Promise<LlmTextResult> {
+    async generateText(messages, options): Promise<LlmTextResult> {
       const call = record(messages, 'text', options);
-      return Promise.resolve({
-        text: String(nextValue(call)),
+      return {
+        text: String(await nextValue(call)),
         usage,
         model: 'fake-model',
         latencyMs: 1,
-      });
+      };
     },
 
-    generateStructured<T>(
+    async generateStructured<T>(
       messages: LlmMessage[],
       schema: ZodType<T>,
       schemaName: string,
       options: GenerateOptions,
     ): Promise<LlmStructuredResult<T>> {
       const call = record(messages, schemaName, options);
-      const value = nextValue(call);
+      const value = await nextValue(call);
 
       // Validated here too, so a test fixture that does not match the stage's
       // schema fails loudly instead of silently flowing through.
@@ -106,13 +110,13 @@ export function createFakeProvider(responses: unknown[] | Responder): FakeLlmPro
         );
       }
 
-      return Promise.resolve({
+      return {
         value: parsed.data,
         usage,
         model: 'fake-model',
         latencyMs: 1,
         repaired: false,
-      });
+      };
     },
   };
 }

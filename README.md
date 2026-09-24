@@ -4,9 +4,10 @@ Turns a pasted job description, a company website and a number of days before th
 interview into a structured, reshapeable interview preparation kit: a company brief,
 a role breakdown, a categorised question bank, flashcards and a day-by-day schedule.
 
-> **Status: Phase 6 (pipeline stages).** Foundation, authentication, the Appendix A
-> schema, persistence, retrieval, the model-calling layer and the generation stages
-> are in place. Coverage, the schedule, the batch command and the UI follow.
+> **Status: Phase 7 (deterministic core).** Foundation, authentication, the Appendix A
+> schema, persistence, retrieval, the model-calling layer, the generation stages and
+> the coverage/schedule/orchestration core are in place. The batch command and the UI
+> follow.
 
 ## Tech stack
 
@@ -447,6 +448,89 @@ Synthesis came in well under estimate because boilerplate removal and relevance-
 capping do most of the compression before the model sees anything. On that measurement a
 full case costs roughly 12,000 tokens rather than the 18,600 planned for, which leaves
 real headroom against the fifteen-minute batch requirement.
+
+## What the model is not allowed to decide
+
+The brief names two decisions that must stay in code: "Allocating topics across the
+days available is arithmetic, and the application should do it. Comparing the extracted
+requirements against the generated questions to find the gaps is likewise your code's
+decision to make, not the model's."
+
+Both are pure functions with no clock, no randomness and no provider. Alongside them,
+code also owns: every id, every count, `jd_chars`, `researched_at`, `pages_used`, the
+company name, and the final structural validation.
+
+### Coverage
+
+A requirement is covered **if and only if** some question's `requirement_ids` contains
+its id. That is the entire rule, and it is checkable only because question generation
+forces every question to cite what it assesses and strips citations that do not resolve.
+
+All uncovered requirements are reported. Only uncovered **must-haves** drive the retry
+loop — a nice-to-have gap is worth knowing about, not worth spending tokens on.
+
+### The second pass, and when it stops
+
+At most **two gap rounds**, so `coverage.passes` is 1, 2 or 3. Each round sends only the
+uncovered requirements, grouped by kind and routed through one deterministic mapping:
+technical → technical, behavioural → behavioural, domain → system-design.
+
+Two rounds because a model that has twice failed to write a question for a requirement
+placed directly in front of it will not succeed on a third attempt. A round that adds
+nothing stops the loop early rather than repeating itself.
+
+**A gap is never closed by inventing something.** If a must-have is still uncovered when
+the rounds are exhausted, the pipeline returns an `incomplete` outcome — the generated
+content is preserved for inspection, but the status makes it impossible to report as a
+finished kit. The brief is unambiguous: "A kit that ships with uncovered must-have
+requirements has failed at the one job it had."
+
+### The schedule
+
+Questions are scored `priority(must=2|nice=1) * 10 + difficulty`, sorted, then dealt
+into days by the **largest-remainder method** over front-loaded weights. Largest
+remainder rather than rounding because it is guaranteed to sum to exactly the number of
+questions — nothing dropped, nothing scheduled twice.
+
+The invariant that makes "everything is scheduled" mean something: **every question is
+_introduced_ exactly once.** Review days may repeat ids introduced earlier, and a repeat
+never counts as an introduction — otherwise the requirement would be satisfiable by
+repeating one question sixty times.
+
+Edge cases are handled rather than hoped for:
+
+- **1 day** — everything on day one.
+- **60 days, few questions** — surplus days become review days over a rotating window, so
+  the count still matches exactly and every day has real ids and non-zero minutes.
+- **No questions at all** — still exactly N days, each with empty `question_ids`, valid
+  integer minutes, and a focus that says no material could be extracted. No invented ids.
+
+### Failure policy
+
+**Fatal** — requirement extraction failure, final schema validation failure, and
+unresolved must-have coverage.
+
+**Recoverable, and recorded** — crawl or search failure, research synthesis, the company
+brief, the role breakdown, any single question category, and flashcards. One category
+failing does not cost the other three; an unreachable company site still produces a kit
+with honest notes.
+
+### Measured, end to end
+
+One complete case against the fixture site and the real provider:
+
+|                          |                                                                       |
+| ------------------------ | --------------------------------------------------------------------- |
+| Wall clock               | 61.8s                                                                 |
+| Tokens                   | 15,968                                                                |
+| Coverage passes          | 1 (first draft covered everything)                                    |
+| Output                   | 6 requirements, 15 questions across all four categories, 6 flashcards |
+| Projected for five cases | ~5.1 min against a 15-minute limit                                    |
+
+Worth noting from that run: the rate limiter blocked for 40s before one call, which was
+most of the wall clock. That is the limiter working as intended — waiting costs less than
+a 429 — but it shows the two model buckets are not evenly loaded. The timed five-case run
+in the batch phase is the right place to tune that, with data rather than a guess.
 
 ## Testing
 

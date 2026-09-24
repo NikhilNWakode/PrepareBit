@@ -16,12 +16,15 @@ import { bulletList, capText, INPUT_CAPS, SYSTEM_RULES } from '../prompts.js';
 const roleSchema = z.object({
   title: z.string(),
   seniority: z.string(),
+  location: z.string(),
   responsibilities: z.array(z.string()),
 });
 
 export interface RoleBreakdown {
   title: string;
   seniority: string;
+  /** Feeds `source.location`. Empty when the posting does not say. */
+  location: string;
   responsibilities: string[];
 }
 
@@ -32,6 +35,8 @@ const INSTRUCTIONS = [
   '- seniority: one word or short phrase the posting supports, such as "junior",',
   '  "mid", "senior", "staff" or "lead". Use "" if it does not say and the title',
   '  does not imply one.',
+  '- location: where the posting says the role is based, including "Remote" if it',
+  '  says so. Use "" if it does not say. Do not guess from the company name.',
   '- responsibilities: what the person will actually do day to day, one per entry,',
   '  taken from the posting rather than from what such a role usually involves.',
   '',
@@ -84,6 +89,7 @@ export async function generateRole(
     role: {
       title: response.value.title.trim(),
       seniority: response.value.seniority.trim(),
+      location: response.value.location.trim(),
       responsibilities: response.value.responsibilities
         .map((item) => item.trim())
         .filter((item) => item.length > 0),

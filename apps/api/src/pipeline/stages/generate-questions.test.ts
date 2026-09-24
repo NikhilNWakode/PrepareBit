@@ -16,6 +16,7 @@ const REQUIREMENTS: KitRequirement[] = [
 const ROLE: RoleBreakdown = {
   title: 'Senior Backend Engineer',
   seniority: 'senior',
+  location: 'Rotterdam',
   responsibilities: ['Own the routing service'],
 };
 

@@ -188,6 +188,7 @@ describe('generateRole', () => {
       {
         title: 'Senior Backend Engineer',
         seniority: 'senior',
+        location: 'Rotterdam',
         responsibilities: ['Own the routing service', '  '],
       },
     ]);
@@ -195,12 +196,15 @@ describe('generateRole', () => {
     const result = await generateRole('Senior Backend Engineer...', requirements, provider);
 
     expect(result.role.title).toBe('Senior Backend Engineer');
+    expect(result.role.location).toBe('Rotterdam');
     // Empty entries are dropped rather than shipped as blank responsibilities.
     expect(result.role.responsibilities).toEqual(['Own the routing service']);
   });
 
   it('is told the requirements so it does not restate them as responsibilities', async () => {
-    const provider = createFakeProvider([{ title: 'x', seniority: '', responsibilities: [] }]);
+    const provider = createFakeProvider([
+      { title: 'x', seniority: '', location: '', responsibilities: [] },
+    ]);
 
     await generateRole('A posting', requirements, provider);
 
