@@ -4,9 +4,9 @@ Turns a pasted job description, a company website and a number of days before th
 interview into a structured, reshapeable interview preparation kit: a company brief,
 a role breakdown, a categorised question bank, flashcards and a day-by-day schedule.
 
-> **Status: Phase 5 (LLM layer).** Foundation, authentication, the Appendix A
-> schema, persistence, retrieval and the model-calling layer are in place. The
-> generation pipeline and the builder UI arrive in later phases.
+> **Status: Phase 6 (pipeline stages).** Foundation, authentication, the Appendix A
+> schema, persistence, retrieval, the model-calling layer and the generation stages
+> are in place. Coverage, the schedule, the batch command and the UI follow.
 
 ## Tech stack
 
@@ -359,6 +359,94 @@ the API key. Disabled in production.
 The key is read from the environment only. It never appears in source, a test fixture, a
 log line, an error message or a cache key. Logs record stage, model, latency and token
 usage.
+
+## Generation stages
+
+The brief asks for "a sequence of deliberate steps that respond to what has actually
+been found, not by a single prompt that returns everything at once." Each stage is an
+independently callable, independently tested function with its own schema and prompt.
+
+| Stage                    | Sees                                                    | Model tier |
+| ------------------------ | ------------------------------------------------------- | ---------- |
+| `extract-requirements`   | the job description, and nothing else                   | fast       |
+| `synthesise-research`    | the crawled pages — the only stage that ever does       | primary    |
+| `generate-company-brief` | the digest                                              | fast       |
+| `generate-role`          | the posting plus extracted requirements                 | primary    |
+| `generate-questions` x4  | a different requirement subset and context per category | split      |
+| `generate-flashcards`    | requirements and questions, never the pages             | fast       |
+
+### Requirements must be quoted, not asserted
+
+The highest-scoring band is requirement extraction, and its hardest rule is negative:
+"Inventing requirements a description does not contain is worse than reporting that
+there were few."
+
+Telling a model not to invent is necessary and insufficient, so **the model is made to
+quote its source and code checks the quote**. Each extracted requirement carries an
+`evidence` field — a verbatim span from the posting — and a pure verifier normalises
+both sides and confirms the span really occurs. A requirement whose evidence is absent
+is **dropped**, and the drop is recorded honestly in the notes.
+
+The model is never asked whether its own evidence is valid. It supplies the span; code
+decides. A secondary check catches a real span cited for an unrelated claim.
+
+`evidence` is internal pipeline metadata and is discarded before the kit is built: the
+Appendix A requirement stays exactly `{ id, text, kind, priority }`.
+
+The verifier is deliberately lenient about wording — it folds case, whitespace and smart
+punctuation, and stems words so "Knows Go" still matches "Must know Go" — because
+dropping a genuine must-have costs coverage points. It is strict only about whether the
+posting actually said the thing.
+
+### Four categories, one stage
+
+The brief: "a requirement like five years of React leads to technical questions while
+mentoring junior engineers leads to behavioural ones; the two should not come from the
+same call with the same instructions."
+
+So question generation is one reusable stage parameterised by category, not four copies
+of the same code. Each category genuinely differs in all three inputs that matter:
+
+- **technical** — technical requirements + engineering facts
+- **behavioural** — behavioural requirements + what the company says about hiring
+- **system-design** — technical and domain requirements + the seniority signal
+- **company-fit** — must-have requirements + the company digest
+
+Every question must cite the `requirement_ids` it assesses. A cited id that does not
+exist is stripped, and a question left citing nothing is discarded — that citation is
+what makes the coming coverage check verifiable rather than a matter of opinion.
+
+### Reading the corpus once
+
+Raw pages are seen by exactly one call, which compresses them into a small typed digest
+reused by every later stage. Sending eight pages of company website to nine stages would
+spend the whole 8,000-tokens-per-minute budget on repetition. Hiring pages are ordered
+first so they survive the input cap, because they are what actually change a kit.
+
+`hiringFacts` and `interviewFacts` are kept separate from general company facts, so a
+company that publishes a take-home followed by a system-design round produces a
+different kit from one that says nothing.
+
+### Being honest about what was not found
+
+A stage with nothing to work from does not call the model at all — it returns an empty
+result and says so. Nothing is retrieved, so the brief states that plainly rather than
+inventing a company. No requirements of a category, so no questions are generated for
+it. This both saves tokens and keeps the kit truthful.
+
+### Measured cost
+
+Verified against the live API rather than estimated:
+
+| Stage                  | Estimated | Actual    | Latency |
+| ---------------------- | --------- | --------- | ------- |
+| `extract-requirements` | ~1,800    | **1,486** | 1.4s    |
+| `synthesise-research`  | ~4,500    | **1,871** | 2.3s    |
+
+Synthesis came in well under estimate because boilerplate removal and relevance-ordered
+capping do most of the compression before the model sees anything. On that measurement a
+full case costs roughly 12,000 tokens rather than the 18,600 planned for, which leaves
+real headroom against the fifteen-minute batch requirement.
 
 ## Testing
 
