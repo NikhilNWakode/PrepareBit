@@ -26,12 +26,21 @@ describe('LlmError.retryable', () => {
     }
   });
 
+  /**
+   * How long these models think before answering varies by more than 2x on
+   * identical input, and that thinking is charged to the completion budget.
+   * A generation that came back unusable is therefore a dice roll, not a
+   * property of the request, so it is worth one more throw.
+   */
+  it('retries a model response that came back unusable', () => {
+    expect(new LlmError('INVALID_MODEL_RESPONSE', 'x').retryable).toBe(true);
+  });
+
   /** Each pointless retry spends one of 1,000 requests a day. */
   it('does not retry what a second attempt cannot fix', () => {
     for (const kind of [
       'INVALID_REQUEST',
       'PROVIDER_UNAVAILABLE',
-      'INVALID_MODEL_RESPONSE',
       'UNSUPPORTED_CAPABILITY',
     ] as const) {
       expect(new LlmError(kind, 'x').retryable).toBe(false);

@@ -59,14 +59,37 @@ export type PipelineFailureCode =
  * had." The generated content is preserved for inspection, but the status
  * makes it impossible to report as a success by accident.
  */
+/**
+ * `digest` and `counters` travel with a successful outcome because regenerating
+ * one part of a kit later needs them.
+ *
+ * Without the digest, regenerating a single question category would mean
+ * crawling the company site and synthesising it again — a minute and most of a
+ * token budget spent redoing work already done. Without the counters, they would
+ * have to be inferred from array lengths, which is true today only because
+ * nothing is dropped after an id has been allocated.
+ */
+export interface PipelineContext {
+  digest: ResearchDigest;
+  counters: IdCounters;
+}
+
 export type PipelineOutcome =
-  | { status: 'ok'; kit: Kit; notes: string[]; usage: LlmUsage; passes: number }
+  | {
+      status: 'ok';
+      kit: Kit;
+      notes: string[];
+      usage: LlmUsage;
+      passes: number;
+      context: PipelineContext;
+    }
   | {
       status: 'incomplete';
       kit: Kit;
       notes: string[];
       usage: LlmUsage;
       passes: number;
+      context: PipelineContext;
       error: { code: PipelineFailureCode; message: string };
     }
   | {
@@ -314,6 +337,8 @@ export async function runKitPipeline(
 
   step('Planning the schedule');
 
+  const context: PipelineContext = { digest, counters };
+
   // Completion-blocking: the content is preserved for inspection, but the
   // status prevents it being reported as a finished kit.
   if (coverage.uncoveredMustIds.length > 0) {
@@ -323,6 +348,7 @@ export async function runKitPipeline(
       notes,
       usage,
       passes,
+      context,
       error: {
         code: 'COVERAGE_INCOMPLETE',
         message: `${coverage.uncoveredMustIds.length} must-have requirement(s) still have no question after ${passes} coverage pass(es): ${coverage.uncoveredMustIds.join(', ')}`,
@@ -330,5 +356,5 @@ export async function runKitPipeline(
     };
   }
 
-  return { status: 'ok', kit: validation.kit, notes, usage, passes };
+  return { status: 'ok', kit: validation.kit, notes, usage, passes, context };
 }

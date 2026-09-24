@@ -2,14 +2,14 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 
 import { AppShell } from '@/components/app-shell';
-import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardBody, CardHeader } from '@/components/ui/card';
 import { Field } from '@/components/ui/field';
+import { Panel } from '@/components/ui/section';
 import { TextareaField } from '@/components/ui/textarea';
+import { PageTitle } from '@/components/ui/typography';
 import { ApiError } from '@/lib/api-client';
 import { createKit, createKitsFromFile, type BatchUploadResponse } from '@/lib/kits';
 
@@ -107,6 +107,40 @@ function parseUpload(fileName: string, text: string): ParsedUpload {
   return { fileName, cases, problems };
 }
 
+/**
+ * A numbered step.
+ *
+ * The three inputs are not equivalent fields on a record — they are the three
+ * decisions that shape the kit, and numbering them says so. The number is
+ * decoration only in the sense that it carries no data; it carries order,
+ * which is the point.
+ */
+function Step({
+  number,
+  title,
+  description,
+  children,
+}: {
+  number: string;
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="grid gap-x-6 gap-y-3 sm:grid-cols-[2.5rem_1fr]">
+      <p aria-hidden="true" className="font-mono text-xs text-muted">
+        {number}
+      </p>
+
+      <div>
+        <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+        <p className="mt-0.5 max-w-[60ch] text-[0.8125rem] text-muted">{description}</p>
+        <div className="mt-4">{children}</div>
+      </div>
+    </section>
+  );
+}
+
 export default function NewKitPage() {
   const router = useRouter();
 
@@ -190,93 +224,141 @@ export default function NewKitPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-2xl">
-        <Link href="/dashboard" className="text-xs text-muted hover:text-ink">
-          ← Back to your kits
+        <Link
+          href="/dashboard"
+          className="inline-flex min-h-6 items-center gap-1 text-[0.8125rem] text-muted hover:text-ink"
+        >
+          <span aria-hidden="true">←</span> All kits
         </Link>
 
-        <h1 className="mt-3 text-xl font-medium tracking-tight">New kit</h1>
-        <p className="mt-0.5 text-sm text-muted">
-          The job description is pasted in. The company website is crawled for what they do and how
-          they hire.
-        </p>
+        <div className="mt-3 border-b border-border-strong pb-5">
+          <PageTitle>New kit</PageTitle>
+          <p className="mt-1.5 text-sm text-muted">
+            The job description is read for its requirements. The company website is crawled for
+            what they do and how they hire.
+          </p>
+        </div>
 
-        <form onSubmit={handleSubmit} noValidate className="mt-6 flex flex-col gap-4">
-          {formError ? <Alert>{formError}</Alert> : null}
+        <form onSubmit={handleSubmit} noValidate className="mt-10 flex flex-col gap-10">
+          {formError ? (
+            <Panel tone="danger">
+              <p role="alert" className="text-sm text-danger">
+                {formError}
+              </p>
+            </Panel>
+          ) : null}
 
-          <TextareaField
-            label="Job description"
-            value={jd}
-            onChange={(event) => setJd(event.target.value)}
-            placeholder="Paste the full posting, including the requirements section."
-            error={errors.jd}
-            hint={`${jd.trim().length} characters`}
-            disabled={pending}
-            required
-            autoFocus
-          />
+          <Step
+            number="01"
+            title="Role"
+            description="Paste the posting. Its requirements are what every question is checked against, so the more of it you include, the less the kit has to guess."
+          >
+            <TextareaField
+              label="Job description"
+              value={jd}
+              onChange={(event) => setJd(event.target.value)}
+              placeholder="Paste the full posting, including the requirements section."
+              error={errors.jd}
+              hint={`${jd.trim().length} characters`}
+              disabled={pending}
+              required
+              autoFocus
+            />
+          </Step>
 
-          <Field
-            label="Company website"
-            type="url"
-            value={companyUrl}
-            onChange={(event) => setCompanyUrl(event.target.value)}
-            placeholder="https://example.com"
-            error={errors.company_url}
-            hint="The homepage is enough — the careers or handbook page is found from there."
-            disabled={pending}
-            required
-          />
+          <Step
+            number="02"
+            title="Company"
+            description="Crawled for what they build and how they hire. A company that publishes its interview process produces a different kit from one that says nothing."
+          >
+            <Field
+              label="Company website"
+              type="url"
+              value={companyUrl}
+              onChange={(event) => setCompanyUrl(event.target.value)}
+              placeholder="https://example.com"
+              error={errors.company_url}
+              hint="The homepage is enough — the careers or handbook page is found from there."
+              disabled={pending}
+              required
+            />
+          </Step>
 
-          <Field
-            label="Days until the interview"
-            type="number"
-            min={MIN_DAYS}
-            max={MAX_DAYS}
-            value={days}
-            onChange={(event) => setDays(event.target.value)}
-            error={errors.days}
-            hint="The study plan is spread across exactly this many days."
-            disabled={pending}
-            required
-            className="w-32"
-          />
+          <Step
+            number="03"
+            title="Timeline"
+            description="The study plan is spread across exactly this many days, front-loaded so the hardest material comes first."
+          >
+            <Field
+              label="Days until the interview"
+              type="number"
+              min={MIN_DAYS}
+              max={MAX_DAYS}
+              value={days}
+              onChange={(event) => setDays(event.target.value)}
+              error={errors.days}
+              disabled={pending}
+              required
+              className="w-32"
+            />
+          </Step>
 
-          <div>
-            <Button type="submit" pending={pending}>
-              {pending ? 'Starting…' : 'Generate kit'}
-            </Button>
+          <div className="border-t border-border pt-6 sm:pl-[4rem]">
+            <p className="text-xs font-medium tracking-wide text-muted uppercase">
+              The kit will include
+            </p>
+            <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[0.8125rem] text-muted">
+              {[
+                'Company research',
+                'Requirements',
+                'Interview questions',
+                'Flashcards',
+                'Study plan',
+              ].map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+
+            <div className="mt-5 flex items-center gap-3">
+              <Button type="submit" pending={pending}>
+                {pending ? 'Starting…' : 'Build interview kit'}
+              </Button>
+              <span className="text-[0.8125rem] text-muted">Takes about a minute.</span>
+            </div>
           </div>
         </form>
 
-        <Card className="mt-10">
-          <CardHeader>
-            <h2 className="text-sm font-medium">Several roles at once</h2>
-            <p className="mt-0.5 text-xs text-muted">
-              Upload a JSON file of roles — each needs an <code>id</code>, <code>jd</code>,{' '}
-              <code>company_url</code> and <code>days</code>. One kit is created per role.
-            </p>
-          </CardHeader>
+        <section className="mt-14 border-t border-border-strong pt-6">
+          <h2 className="text-lg font-semibold tracking-tight">Several roles at once</h2>
+          <p className="mt-1 text-sm text-muted">
+            Upload a JSON file of roles — each needs an{' '}
+            <code className="font-mono text-xs">id</code>,{' '}
+            <code className="font-mono text-xs">jd</code>,{' '}
+            <code className="font-mono text-xs">company_url</code> and{' '}
+            <code className="font-mono text-xs">days</code>. One kit is created per role.
+          </p>
 
-          <CardBody className="flex flex-col gap-3">
+          <div className="mt-4 flex flex-col gap-4">
             <input
               type="file"
               accept="application/json,.json"
               onChange={(event) => void handleFile(event.target.files?.[0])}
               disabled={pending}
               aria-label="JSON file of roles"
-              className="text-sm file:mr-3 file:rounded file:border file:border-border file:bg-surface file:px-3 file:py-1.5 file:text-sm hover:file:bg-canvas"
+              className="text-sm file:mr-3 file:h-9 file:rounded file:border file:border-border file:bg-surface file:px-3 file:text-sm file:font-medium hover:file:bg-subtle"
             />
 
             {upload ? (
-              <div className="rounded border border-border bg-canvas px-3 py-2 text-sm">
-                <p className="font-medium">{upload.fileName}</p>
+              <Panel>
+                <p className="font-mono text-xs">{upload.fileName}</p>
 
                 {upload.cases.length > 0 ? (
                   <ul className="mt-2 flex flex-col gap-1">
                     {upload.cases.map((entry) => (
-                      <li key={entry.id} className="text-xs text-muted">
-                        <span className="text-ink">{entry.id}</span> — {entry.company_url},{' '}
-                        {entry.days} day{entry.days === 1 ? '' : 's'}, {entry.jdChars} characters
+                      <li key={entry.id} className="text-[0.8125rem] text-muted">
+                        <span className="font-mono text-xs text-ink">{entry.id}</span>{' '}
+                        {entry.company_url} · {entry.days} day{entry.days === 1 ? '' : 's'} ·{' '}
+                        {entry.jdChars} characters
                       </li>
                     ))}
                   </ul>
@@ -285,7 +367,7 @@ export default function NewKitPage() {
                 {upload.problems.length > 0 ? (
                   <ul className="mt-2 flex flex-col gap-1">
                     {upload.problems.map((problem) => (
-                      <li key={problem} className="text-xs text-red-700">
+                      <li key={problem} className="text-[0.8125rem] text-danger">
                         {problem}
                       </li>
                     ))}
@@ -295,6 +377,7 @@ export default function NewKitPage() {
                 {upload.cases.length > 0 ? (
                   <Button
                     variant="secondary"
+                    size="sm"
                     className="mt-3"
                     pending={pending}
                     onClick={() => void submitUpload()}
@@ -302,23 +385,23 @@ export default function NewKitPage() {
                     Generate {upload.cases.length} kit{upload.cases.length === 1 ? '' : 's'}
                   </Button>
                 ) : null}
-              </div>
+              </Panel>
             ) : null}
 
             {uploadResult ? (
-              <div className="rounded border border-border bg-canvas px-3 py-2 text-sm">
-                <p>
+              <Panel>
+                <p className="text-sm">
                   {uploadResult.accepted.length} queued, {uploadResult.rejected.length} rejected.
                 </p>
                 {uploadResult.rejected.map((entry) => (
-                  <p key={`${entry.index}`} className="mt-1 text-xs text-red-700">
+                  <p key={`${entry.index}`} className="mt-1 text-[0.8125rem] text-danger">
                     {entry.id ?? `row ${entry.index + 1}`}: {entry.reason}
                   </p>
                 ))}
-              </div>
+              </Panel>
             ) : null}
-          </CardBody>
-        </Card>
+          </div>
+        </section>
       </div>
     </AppShell>
   );

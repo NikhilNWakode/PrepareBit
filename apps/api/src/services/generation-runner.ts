@@ -93,12 +93,16 @@ export async function generateKit(
     // command treats it — the interface surfaces the gap rather than hiding it.
     await kitRepository.completeKit(kitId, {
       kit: outcome.kit,
+      // Empty on purpose: the map records deviations from generated, and a
+      // missing entry already means "generated, and regeneration may replace
+      // it". Seeding an entry per item would store the default thirty times.
       provenance: {},
-      idCounters: {
-        requirement: outcome.kit.role.requirements.length,
-        question: outcome.kit.questions.length,
-        flashcard: outcome.kit.flashcards.length,
-      },
+      // The pipeline's own counters, not the array lengths: an id must never be
+      // reissued, and only the counters know how many were ever handed out.
+      idCounters: outcome.context.counters,
+      // The research digest, so regenerating one section later costs one call
+      // rather than another crawl.
+      context: { digest: outcome.context.digest },
       research: {
         pagesUsed: outcome.kit.source.pages_used,
         pagesFailed: [],

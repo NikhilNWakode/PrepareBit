@@ -42,6 +42,42 @@ const DEFAULT_MAX_TOKENS = 2_000;
  */
 const MIN_COMPLETION_TOKENS = 512;
 
+/**
+ * Headroom added on top of whatever a stage asks for.
+ *
+ * A stage can reason about how much *output* it needs — roughly 650 tokens of
+ * JSON for a requirement list. It cannot reason about how long the model will
+ * think first, and on these models that thinking is charged to the same
+ * budget and is not proportional to anything the caller can see.
+ *
+ * Measured on one real 1,725-character posting, same prompt, same temperature:
+ *
+ *   gpt-oss-20b    2,890 reasoning + 633 json
+ *   gpt-oss-20b    1,757 reasoning + 685 json   (a longer posting — less thinking)
+ *   gpt-oss-120b   1,260 reasoning + 683 json
+ *
+ * So reasoning varies by more than 2x run to run and does not grow with the
+ * input. A cap sized for the typical case fails intermittently on the same
+ * input, which is the worst kind of failure to diagnose.
+ *
+ * This is a ceiling, not a spend: the budget is charged on tokens actually
+ * used, so generous headroom costs nothing on an easy call and is the
+ * difference between a kit and an error on a hard one.
+ */
+const REASONING_HEADROOM_TOKENS = 4_000;
+
+/** Keeps a single call inside one minute of the free tier's per-model budget. */
+const MAX_COMPLETION_TOKENS = 7_000;
+
+/**
+ * Turns a stage's output budget into a completion cap the model can actually
+ * work within.
+ */
+export function completionCapFor(requested: number | undefined): number {
+  const output = Math.max(requested ?? DEFAULT_MAX_TOKENS, MIN_COMPLETION_TOKENS);
+  return Math.min(output + REASONING_HEADROOM_TOKENS, MAX_COMPLETION_TOKENS);
+}
+
 interface GroqChoice {
   message?: { content?: string };
   finish_reason?: string;
@@ -144,10 +180,7 @@ export function createGroqProvider({
             model,
             messages,
             temperature: options.temperature ?? 0.2,
-            max_completion_tokens: Math.max(
-              options.maxTokens ?? DEFAULT_MAX_TOKENS,
-              MIN_COMPLETION_TOKENS,
-            ),
+            max_completion_tokens: completionCapFor(options.maxTokens),
             ...(responseFormat ? { response_format: responseFormat } : {}),
           }),
           signal: options.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -204,8 +237,22 @@ export function createGroqProvider({
       }
 
       const body = (await response.json()) as GroqResponse;
-      const text = body.choices?.[0]?.message?.content ?? '';
+      const choice = body.choices?.[0];
+      const text = choice?.message?.content ?? '';
       const usage = usageFrom(body, estimated);
+
+      /*
+       * The completion ran out of room. Without this the truncated JSON would
+       * surface as a parse error, which points at the model's grammar rather
+       * than at the budget that cut it off — and the two need opposite fixes.
+       */
+      if (choice?.finish_reason === 'length') {
+        scheduler.settle(model, usage.totalTokens);
+        throw new LlmError(
+          'INVALID_MODEL_RESPONSE',
+          `Model "${model}" ran out of completion budget before finishing its answer.`,
+        );
+      }
 
       // Replace the estimate with what was actually charged.
       scheduler.settle(model, usage.totalTokens);

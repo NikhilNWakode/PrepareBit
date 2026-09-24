@@ -7,10 +7,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { KitProgressView } from '@/components/kit-progress';
 import { KitView } from '@/components/kit-view';
-import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardBody } from '@/components/ui/card';
-import { StatusBadge } from '@/components/ui/status-badge';
+import { Panel } from '@/components/ui/section';
 import { ApiError } from '@/lib/api-client';
 import {
   createKit,
@@ -35,8 +33,20 @@ const BACKOFF = 1.4;
 type View =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'working'; progress: KitProgress }
+  | { kind: 'working'; progress: KitProgress; kit: StoredKit | null }
   | { kind: 'ready'; kit: StoredKit };
+
+/** A back link for the states that have no kit header of their own yet. */
+function BackLink() {
+  return (
+    <Link
+      href="/dashboard"
+      className="inline-flex min-h-6 items-center gap-1 text-[0.8125rem] text-muted hover:text-ink"
+    >
+      <span aria-hidden="true">←</span> All kits
+    </Link>
+  );
+}
 
 export default function KitPage() {
   const params = useParams<{ id: string }>();
@@ -63,23 +73,30 @@ export default function KitPage() {
   useEffect(() => {
     let active = true;
     let interval = FIRST_INTERVAL_MS;
+    let stored: StoredKit | null = null;
 
     const poll = async () => {
       try {
         const progress = await getKitProgress(kitId);
         if (!active) return;
 
+        // Fetched once so the progress screen can show elapsed time from when
+        // the kit was actually created, not from when this tab opened.
+        if (!stored) {
+          stored = (await getKit(kitId)).kit;
+          if (!active) return;
+        }
+
         if (isTerminal(progress.status)) {
-          // Terminal: fetch the whole kit once and stop polling entirely.
           if (progress.status === 'failed') {
-            setView({ kind: 'working', progress });
+            setView({ kind: 'working', progress, kit: stored });
           } else {
             await loadFullKit();
           }
           return;
         }
 
-        setView({ kind: 'working', progress });
+        setView({ kind: 'working', progress, kit: stored });
 
         interval = Math.min(interval * BACKOFF, MAX_INTERVAL_MS);
         timer.current = setTimeout(() => void poll(), interval);
@@ -127,64 +144,76 @@ export default function KitPage() {
 
   return (
     <AppShell>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href="/dashboard" className="text-xs text-muted hover:text-ink">
-          ← Back to your kits
-        </Link>
-
-        {view.kind === 'ready' ? <StatusBadge status={view.kit.status} /> : null}
-        {view.kind === 'working' ? <StatusBadge status={view.progress.status} /> : null}
-      </div>
-
-      {reused && view.kind === 'ready' ? (
-        <Card className="mt-4 border-accent/30 bg-accent/5">
-          <CardBody>
-            <p className="text-sm">
-              You have already made a kit for this posting, so this is the existing one rather than
-              a new copy.
-            </p>
-          </CardBody>
-        </Card>
-      ) : null}
-
-      <div className="mt-4">
-        {view.kind === 'loading' ? (
-          <p className="text-sm text-muted" role="status">
+      {view.kind === 'loading' ? (
+        <div>
+          <BackLink />
+          <p className="mt-6 text-sm text-muted" role="status">
             Loading this kit…
           </p>
-        ) : null}
+        </div>
+      ) : null}
 
-        {view.kind === 'error' ? (
-          <div className="flex flex-col items-start gap-3">
-            <Alert>{view.message}</Alert>
+      {view.kind === 'error' ? (
+        <div>
+          <BackLink />
+          <div className="mt-6 flex max-w-xl flex-col items-start gap-4">
+            <Panel tone="danger">
+              <p role="alert" className="text-sm text-danger">
+                {view.message}
+              </p>
+            </Panel>
             <Link href="/dashboard">
               <Button variant="secondary">Back to your kits</Button>
             </Link>
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
-        {failed && view.kind === 'working' ? (
-          <Card className="border-red-200">
-            <CardBody className="flex flex-col items-start gap-3">
-              <div>
-                <h2 className="text-sm font-medium text-red-800">This kit could not be built</h2>
-                {/* The message the pipeline recorded — never a stack trace. */}
-                <p className="mt-1 text-sm text-muted">
-                  {view.progress.error?.message ??
-                    'Something went wrong while generating this kit.'}
-                </p>
-              </div>
+      {failed && view.kind === 'working' ? (
+        <div>
+          <BackLink />
+          <div className="mt-6 max-w-xl">
+            <h1 className="text-[1.75rem] font-semibold tracking-tight">
+              This kit could not be built
+            </h1>
+            {/* The message the pipeline recorded — never a stack trace. */}
+            <p className="mt-2 text-sm text-muted">
+              {view.progress.error?.message ?? 'Something went wrong while generating this kit.'}
+            </p>
+            <div className="mt-5">
               <Button onClick={() => void retry()} pending={retrying}>
                 {retrying ? 'Retrying…' : 'Try again'}
               </Button>
-            </CardBody>
-          </Card>
-        ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
-        {view.kind === 'working' && !failed ? <KitProgressView progress={view.progress} /> : null}
+      {view.kind === 'working' && !failed ? (
+        <div>
+          <BackLink />
+          <div className="mt-6">
+            <KitProgressView
+              progress={view.progress}
+              startedAt={view.kit?.createdAt ?? new Date().toISOString()}
+            />
+          </div>
+        </div>
+      ) : null}
 
-        {view.kind === 'ready' ? <KitView stored={view.kit} /> : null}
-      </div>
+      {view.kind === 'ready' ? (
+        <>
+          {reused ? (
+            <Panel className="mb-6">
+              <p className="text-sm">
+                You have already made a kit for this posting, so this is the existing one rather
+                than a new copy.
+              </p>
+            </Panel>
+          ) : null}
+          <KitView stored={view.kit} />
+        </>
+      ) : null}
     </AppShell>
   );
 }

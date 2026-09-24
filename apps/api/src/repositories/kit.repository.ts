@@ -3,6 +3,7 @@ import { isValidObjectId } from 'mongoose';
 
 import type { IdCounters } from '../domain/kit/ids.js';
 import type { ProvenanceMap } from '../domain/kit/provenance.js';
+import type { ResearchDigest } from '../pipeline/research-digest.js';
 import { KitModel, type KitStatus } from './models/kit.model.js';
 
 /**
@@ -18,6 +19,11 @@ export interface KitInput {
   days: number;
 }
 
+/** Kept for regeneration; absent on kits generated before it was recorded. */
+export interface KitContext {
+  digest: ResearchDigest;
+}
+
 export interface StoredKit {
   id: string;
   status: KitStatus;
@@ -25,6 +31,7 @@ export interface StoredKit {
   kit: Kit | null;
   provenance: ProvenanceMap;
   idCounters: IdCounters;
+  context: KitContext | null;
   research: {
     pagesUsed: string[];
     pagesFailed: { url: string; reason: string }[];
@@ -36,6 +43,14 @@ export interface StoredKit {
   createdAt: Date;
   updatedAt: Date;
 }
+
+/**
+ * A refused write says which of the two things went wrong, because the caller
+ * owes the user different answers: a kit that is not theirs is a 404, and a kit
+ * that moved on under them is a 409 they can recover from by reloading.
+ */
+export type ReplaceResult =
+  { ok: true; kit: StoredKit } | { ok: false; reason: 'not-found' | 'stale' };
 
 /** The list view needs headline facts, not a whole kit body. */
 export interface KitSummary {
@@ -58,6 +73,7 @@ function toStoredKit(document: any): StoredKit {
     kit: document.kit ?? null,
     provenance: document.provenance ?? {},
     idCounters: document.idCounters,
+    context: document.context ?? null,
     research: document.research,
     progress: document.progress,
     error: document.error ?? null,
@@ -103,31 +119,45 @@ export const kitRepository = {
   },
 
   /**
-   * Replaces the contract object and the state that travels with it.
+   * Replaces the contract object and the state that travels with it, but only
+   * if the caller was working from the version it says it was.
    *
-   * `markModified` is mandatory: `kit` and `provenance` are Mixed, and Mongoose
-   * cannot detect mutation inside a Mixed field, so without it an edit is
-   * silently dropped. Keeping every write behind this method is what makes that
-   * a single place to get right.
+   * `updatedAt` is the version. Putting it in the filter makes the whole thing
+   * one atomic compare-and-set: two tabs editing the same kit cannot silently
+   * overwrite each other, because the second write matches nothing and is
+   * reported as stale instead of quietly winning.
+   *
+   * Whole fields are `$set` rather than mutated on a loaded document, so the
+   * `markModified` trap that Mixed fields carry does not apply here.
    */
   async replaceKitContent(
     userId: string,
     kitId: string,
+    expectedVersion: Date,
     content: { kit: Kit; provenance: ProvenanceMap; idCounters: IdCounters },
-  ): Promise<StoredKit | null> {
-    if (!isValidObjectId(kitId)) return null;
+  ): Promise<ReplaceResult> {
+    if (!isValidObjectId(kitId)) return { ok: false, reason: 'not-found' };
+    if (Number.isNaN(expectedVersion.getTime())) return { ok: false, reason: 'stale' };
 
-    const document = await KitModel.findOne({ _id: kitId, userId }).exec();
-    if (!document) return null;
+    const updated = await KitModel.findOneAndUpdate(
+      { _id: kitId, userId, updatedAt: expectedVersion },
+      {
+        $set: {
+          kit: content.kit,
+          provenance: content.provenance,
+          idCounters: content.idCounters,
+        },
+      },
+      { returnDocument: 'after' },
+    )
+      .lean()
+      .exec();
 
-    document.set('kit', content.kit);
-    document.set('provenance', content.provenance);
-    document.set('idCounters', content.idCounters);
-    document.markModified('kit');
-    document.markModified('provenance');
+    if (updated) return { ok: true, kit: toStoredKit(updated) };
 
-    await document.save();
-    return toStoredKit(document.toObject());
+    // Nothing matched: either the kit is not the caller's, or it moved on.
+    const exists = await KitModel.exists({ _id: kitId, userId }).exec();
+    return { ok: false, reason: exists ? 'stale' : 'not-found' };
   },
 
   /**
@@ -189,6 +219,7 @@ export const kitRepository = {
       kit: Kit;
       provenance: ProvenanceMap;
       idCounters: IdCounters;
+      context: KitContext;
       research: StoredKit['research'];
     },
   ): Promise<void> {
@@ -198,12 +229,14 @@ export const kitRepository = {
     document.set('kit', content.kit);
     document.set('provenance', content.provenance);
     document.set('idCounters', content.idCounters);
+    document.set('context', content.context);
     document.set('research', content.research);
     document.set('status', 'completed');
     document.set('error', null);
     // Mixed fields again: without this the kit is silently not written.
     document.markModified('kit');
     document.markModified('provenance');
+    document.markModified('context');
 
     await document.save();
   },

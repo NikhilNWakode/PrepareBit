@@ -26,6 +26,8 @@ export const ERROR_CODES = [
   'LLM_INVALID_RESPONSE',
   'KIT_VALIDATION_FAILED',
   'GENERATION_FAILED',
+  /** The kit changed since the client last read it, or is busy generating. */
+  'CONFLICT',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

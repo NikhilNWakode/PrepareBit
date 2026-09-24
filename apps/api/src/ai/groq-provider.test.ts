@@ -241,8 +241,9 @@ describe('failure handling', () => {
 
     expect((error as LlmError).kind).toBe('INVALID_MODEL_RESPONSE');
     expect((error as LlmError).message).toContain('test-fast');
-    // Not retried: the same prompt would fail the same way.
-    expect(fetchImpl).toHaveBeenCalledOnce();
+    // Retried, because the next attempt may think less and leave room to
+    // answer. Bounded by MAX_ATTEMPTS so a hopeless call cannot loop.
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
   it('floors the completion budget above the model’s reasoning overhead', async () => {
@@ -259,6 +260,67 @@ describe('failure handling', () => {
 
     // A 20-token cap is consumed entirely by reasoning, erasing the answer.
     expect(body.max_completion_tokens).toBeGreaterThanOrEqual(512);
+  });
+
+  /**
+   * The bug this guards against, reproduced live: a real 1,725-character
+   * posting made gpt-oss-20b spend 2,890 tokens reasoning before writing 633
+   * tokens of JSON. Against a 2,500 cap the generation came back empty and
+   * Groq reported a schema failure, which named the wrong culprit.
+   */
+  it('adds reasoning headroom on top of the output budget a stage asks for', async () => {
+    const fetchImpl = mockFetch(() =>
+      jsonResponse(completion('{"company":"Acme","confident":true}')),
+    );
+
+    await provider(fetchImpl).generateStructured(MESSAGES, SCHEMA, 'company', {
+      ...OPTIONS,
+      maxTokens: 2_500,
+    });
+
+    const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body));
+
+    // Room for the JSON the stage asked for *and* the thinking before it.
+    expect(body.max_completion_tokens).toBeGreaterThan(2_500 + 2_890);
+  });
+
+  it('keeps a single call inside one minute of the free-tier budget', async () => {
+    const fetchImpl = mockFetch(() =>
+      jsonResponse(completion('{"company":"Acme","confident":true}')),
+    );
+
+    await provider(fetchImpl).generateStructured(MESSAGES, SCHEMA, 'company', {
+      ...OPTIONS,
+      maxTokens: 100_000,
+    });
+
+    const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body));
+    expect(body.max_completion_tokens).toBeLessThanOrEqual(7_000);
+  });
+
+  /**
+   * A truncated-but-non-empty answer would otherwise surface as malformed
+   * JSON, which points at the model's grammar rather than at the budget that
+   * cut it off — and those two need opposite fixes.
+   */
+  it('names a cut-off answer as a budget problem rather than a parse error', async () => {
+    const fetchImpl = mockFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: '{"company":"Ac' }, finish_reason: 'length' }],
+            usage: { prompt_tokens: 100, completion_tokens: 4_000, total_tokens: 4_100 },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+
+    const error = await provider(fetchImpl)
+      .generateStructured(MESSAGES, SCHEMA, 'company', OPTIONS)
+      .catch((caught: unknown) => caught);
+
+    expect((error as LlmError).kind).toBe('INVALID_MODEL_RESPONSE');
+    expect((error as LlmError).message).toContain('ran out of completion budget');
   });
 
   it('treats a network failure as transient and retries it', async () => {

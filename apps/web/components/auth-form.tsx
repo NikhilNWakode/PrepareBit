@@ -3,10 +3,12 @@
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 
-import { ApiError } from '@/lib/api-client';
-import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
+import { Wordmark } from '@/components/ui/logo';
+import { Panel } from '@/components/ui/section';
+import { PageTitle } from '@/components/ui/typography';
+import { ApiError } from '@/lib/api-client';
 
 interface AuthFormProps {
   mode: 'login' | 'register';
@@ -62,11 +64,29 @@ export function AuthForm({ mode, onSubmit }: AuthFormProps) {
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-4 py-12">
-      <h1 className="text-xl font-medium tracking-tight">{copy.title}</h1>
+    <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-5 py-12 sm:px-6">
+      {/*
+        Enough context to know what this is, and nothing more. A sign-in page
+        is not a place to sell: the person here has already decided.
+      */}
+      <div className="border-b border-border pb-6">
+        <Wordmark />
+        <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted">
+          Turns a job description and a company website into questions, flashcards and a study plan
+          for the days you have left.
+        </p>
+      </div>
 
-      <form onSubmit={handleSubmit} noValidate className="mt-6 flex flex-col gap-4">
-        {error ? <Alert>{error}</Alert> : null}
+      <PageTitle className="mt-8">{copy.title}</PageTitle>
+
+      <form onSubmit={handleSubmit} noValidate className="mt-6 flex flex-col gap-5">
+        {error ? (
+          <Panel tone="danger">
+            <p role="alert" className="text-sm text-danger">
+              {error}
+            </p>
+          </Panel>
+        ) : null}
 
         <Field
           label="Email"
@@ -93,7 +113,7 @@ export function AuthForm({ mode, onSubmit }: AuthFormProps) {
           {...(mode === 'register' ? { hint: 'At least 8 characters.' } : {})}
         />
 
-        <Button type="submit" pending={pending} className="mt-1">
+        <Button type="submit" pending={pending} className="mt-2">
           {pending ? 'Working…' : copy.action}
         </Button>
       </form>

@@ -1,4 +1,4 @@
-# AI Interview Prep Kit
+# PrepareBit
 
 Turns a pasted job description, a company website and a number of days before the
 interview into a structured, reshapeable interview preparation kit: a company brief,

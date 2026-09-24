@@ -56,6 +56,16 @@ const kitSchema = new Schema(
     provenance: { type: Schema.Types.Mixed, default: () => ({}) },
 
     /**
+     * The research digest the pipeline produced, kept so that regenerating one
+     * part of a kit does not mean crawling and summarising the company again.
+     *
+     * Also outside the contract object. The role breakdown is deliberately not
+     * stored here: it can be reconstructed exactly from `kit.role`, which means
+     * a regeneration honours a role the user has since corrected.
+     */
+    context: { type: Schema.Types.Mixed, default: null },
+
+    /**
      * Monotonic id counters, also outside the contract object. Never decremented
      * on delete, so an id is never reissued.
      */

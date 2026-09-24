@@ -2,19 +2,35 @@
 
 /*
  * Design foundation: a research workspace, not a marketing page.
- * Neutral paper background, charcoal text, muted hairline borders, and exactly
- * one accent used for focus and primary intent.
+ *
+ * Hierarchy comes from type, spacing and alignment. There is one accent, used
+ * for focus and for primary intent, and two semantic colours used only when
+ * something is genuinely wrong or genuinely destructive. No gradients, no
+ * shadows, no decoration that does not carry information.
  */
 @theme {
   --color-canvas: #fbfbfa;
   --color-surface: #ffffff;
-  --color-border: #e3e3df;
+  /* A fill for metadata rows and empty states, quieter than a border. */
+  --color-subtle: #f4f4f1;
+  --color-border: #e5e5e1;
+  /* For separators that need to register as structure rather than texture. */
+  --color-border-strong: #d4d4ce;
   --color-ink: #1b1b19;
   --color-muted: #6a6a63;
   --color-accent: #2f5d50;
+  --color-danger: #9a3a34;
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Loaded by next/font in the root layout; the stack behind it is the fallback. */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, monospace;
+
+  /* Wide enough for a dense list, narrow enough to stay a document. */
+  --container-page: 1180px;
+
+  /* Structured rather than bubbly: 4px on controls, 6px on containers. */
+  --radius-DEFAULT: 0.25rem;
+  --radius-md: 0.375rem;
 }
 
 @layer base {
@@ -30,6 +46,18 @@
     line-height: 1.6;
   }
 
+  /*
+   * Identifiers, counts and durations line up in columns when the digits are
+   * the same width, which is most of why monospace is here at all.
+   */
+  code,
+  kbd,
+  samp,
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'calt' 0;
+  }
+
   /* Keyboard users must always be able to see where they are. */
   :focus-visible {
     outline: 2px solid var(--color-accent);
@@ -39,5 +67,36 @@
 
   ::selection {
     background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  }
+
+  /* Anchored sections land below the sticky section navigation. */
+  [id] {
+    scroll-margin-top: 5rem;
+  }
+}
+
+@layer utilities {
+  /*
+   * The one animation in the product: a value that has just been written
+   * settles rather than appears, so a save is visible without a banner
+   * announcing it. Applied by `useSettle` after a successful write.
+   */
+  @keyframes settle {
+    from {
+      background-color: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    }
+    to {
+      background-color: transparent;
+    }
+  }
+
+  .animate-settle {
+    animation: settle 900ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-settle {
+      animation: none;
+    }
   }
 }

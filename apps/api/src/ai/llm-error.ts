@@ -18,6 +18,16 @@ const RETRYABLE: ReadonlySet<LlmFailureKind> = new Set<LlmFailureKind>([
   'RATE_LIMITED',
   'TRANSIENT_PROVIDER_ERROR',
   'TIMEOUT',
+  /*
+   * A model that produced nothing usable may well produce something usable
+   * next time: how long these models think before answering varies by more
+   * than 2x on identical input, so this failure is a dice roll rather than a
+   * property of the request.
+   *
+   * `UNSUPPORTED_CAPABILITY` stays out — a model that cannot do strict
+   * structured output will never start.
+   */
+  'INVALID_MODEL_RESPONSE',
 ]);
 
 export class LlmError extends Error {

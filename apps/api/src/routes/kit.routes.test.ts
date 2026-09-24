@@ -160,7 +160,7 @@ describe.skipIf(!database.available)('kit endpoints', () => {
       const created = await kitRepository.create(userId, INPUT, 'fp-1');
       const kit = validKit();
 
-      await kitRepository.replaceKitContent(userId, created.id, {
+      await kitRepository.replaceKitContent(userId, created.id, created.updatedAt, {
         kit,
         provenance: { q1: generatedEntry() },
         idCounters: { ...EMPTY_ID_COUNTERS, requirement: 2, question: 2, flashcard: 1 },
@@ -183,14 +183,15 @@ describe.skipIf(!database.available)('kit endpoints', () => {
       const created = await kitRepository.create(userId, INPUT, 'fp-1');
 
       const kit = validKit();
-      await kitRepository.replaceKitContent(userId, created.id, {
+      const first = await kitRepository.replaceKitContent(userId, created.id, created.updatedAt, {
         kit,
         provenance: {},
         idCounters: EMPTY_ID_COUNTERS,
       });
+      if (!first.ok) throw new Error('the first write should have succeeded');
 
       kit.questions[0]!.prompt = 'Edited by hand';
-      await kitRepository.replaceKitContent(userId, created.id, {
+      await kitRepository.replaceKitContent(userId, created.id, first.kit.updatedAt, {
         kit,
         provenance: { q1: { ...generatedEntry(), edited: true } },
         idCounters: EMPTY_ID_COUNTERS,
@@ -207,13 +208,14 @@ describe.skipIf(!database.available)('kit endpoints', () => {
       const grace = await signUp('grace@example.com');
       const gracesKit = await kitRepository.create(grace.userId, INPUT, 'fp-grace');
 
-      const result = await kitRepository.replaceKitContent(ada.userId, gracesKit.id, {
-        kit: validKit(),
-        provenance: {},
-        idCounters: EMPTY_ID_COUNTERS,
-      });
+      const result = await kitRepository.replaceKitContent(
+        ada.userId,
+        gracesKit.id,
+        gracesKit.updatedAt,
+        { kit: validKit(), provenance: {}, idCounters: EMPTY_ID_COUNTERS },
+      );
 
-      expect(result).toBeNull();
+      expect(result).toEqual({ ok: false, reason: 'not-found' });
 
       // Grace's kit is untouched.
       const reloaded = await kitRepository.findOwned(grace.userId, gracesKit.id);
