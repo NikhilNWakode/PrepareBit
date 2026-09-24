@@ -1,6 +1,7 @@
 'use client';
 
 import type { Kit, KitFlashcard } from '@prep/shared';
+import Link from 'next/link';
 import { useState } from 'react';
 
 import {
@@ -252,6 +253,15 @@ export function FlashcardsSection({ editor }: { editor: KitEditor }) {
         title="Flashcards"
         count={kit.flashcards.length}
         description="Short recall prompts for the facts worth having ready."
+        actions={
+          kit.flashcards.length > 0 ? (
+            <Link href={`/kits/${editor.kit.id}/practice`}>
+              <Button size="sm">
+                Practise {kit.flashcards.length} card{kit.flashcards.length === 1 ? '' : 's'}
+              </Button>
+            </Link>
+          ) : null
+        }
       />
 
       {kit.flashcards.length > 0 ? (

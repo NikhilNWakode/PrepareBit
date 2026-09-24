@@ -164,6 +164,7 @@ export function editQuestion(
     difficulty?: number;
     requirement_ids?: string[];
     pinned?: boolean;
+    category?: QuestionCategory;
   },
 ): Promise<KitResponse> {
   return send(`/api/kits/${kitId}/questions/${questionId}`, 'PATCH', { version, ...patch });
@@ -280,6 +281,82 @@ export function regenerateBrief(kitId: string, version: string): Promise<Regener
 
 export function rebuildSchedule(kitId: string, version: string): Promise<KitResponse> {
   return send(`/api/kits/${kitId}/regenerate/schedule`, 'POST', { version });
+}
+
+// --- practice and the interview-day briefing ---------------------------------
+
+export type Confidence = 1 | 2 | 3;
+
+export const CONFIDENCE_LABELS: Record<Confidence, string> = {
+  1: 'Low',
+  2: 'Medium',
+  3: 'High',
+};
+
+export interface PracticeCard {
+  id: string;
+  front: string;
+  back: string;
+  requirement_ids: string[];
+  /** Null until the card has been rated at least once. */
+  confidence: Confidence | null;
+  timesReviewed: number;
+}
+
+export interface PracticeProgress {
+  reviewed: number;
+  total: number;
+}
+
+export interface PracticeSession {
+  /** In queue order. The client holds this order for the whole run. */
+  cards: PracticeCard[];
+  progress: PracticeProgress;
+  spread: Record<Confidence, number>;
+}
+
+export function getPracticeSession(kitId: string): Promise<PracticeSession> {
+  return apiFetch(`/api/kits/${kitId}/practice`);
+}
+
+/**
+ * Records one rating. Deliberately carries no version: a rating changes no part
+ * of the kit, so it cannot conflict with an edit open in another tab.
+ */
+export function ratePracticeCard(
+  kitId: string,
+  cardId: string,
+  confidence: Confidence,
+): Promise<{ progress: PracticeProgress }> {
+  return apiFetch(`/api/kits/${kitId}/practice/${cardId}`, {
+    method: 'POST',
+    body: JSON.stringify({ confidence }),
+  });
+}
+
+export type Basis = 'role requirements' | 'company research' | 'the job description';
+
+export interface InterviewQuestion {
+  id: string;
+  text: string;
+  basis: Basis;
+}
+
+export interface Briefing {
+  company: string;
+  companyUrl: string;
+  role: string;
+  seniority: string;
+  location: string;
+  keyRequirements: { id: string; text: string; kind: string; priority: string }[];
+  companyFacts: string[];
+  reminders: string[];
+  questionsToAsk: InterviewQuestion[];
+  researchIsEmpty: boolean;
+}
+
+export function getBriefing(kitId: string): Promise<{ briefing: Briefing; days: number }> {
+  return apiFetch(`/api/kits/${kitId}/interview-day`);
 }
 
 /** Questions that exist but are not in the plan: the prompt to rebuild it. */

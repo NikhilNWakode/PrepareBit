@@ -43,6 +43,8 @@ interface Draft {
   answer_outline: string;
   difficulty: number;
   requirement_ids: string[];
+  /** Present when editing: changing it moves the question between categories. */
+  category?: QuestionCategory;
 }
 
 function draftFrom(question: KitQuestion): Draft {
@@ -51,6 +53,7 @@ function draftFrom(question: KitQuestion): Draft {
     answer_outline: question.answer_outline,
     difficulty: question.difficulty,
     requirement_ids: [...question.requirement_ids],
+    category: question.category,
   };
 }
 
@@ -137,6 +140,27 @@ function QuestionForm({
             <option value={3}>3 — Harder</option>
           </select>
         </label>
+
+        {/* Only when editing: a new question already picked its category. */}
+        {draft.category === undefined ? null : (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-muted">Category</span>
+            <select
+              value={draft.category}
+              onChange={(event) =>
+                onChange({ ...draft, category: event.target.value as QuestionCategory })
+              }
+              disabled={pending}
+              className="h-9 w-44 rounded border border-border bg-surface px-2 text-sm outline-none focus:border-accent"
+            >
+              {QUESTION_CATEGORIES.map((value) => (
+                <option key={value} value={value}>
+                  {CATEGORY_LABELS[value]}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <fieldset className="flex min-w-64 flex-1 flex-col gap-1.5">
           <legend className="mb-1.5 text-xs font-medium text-muted">
@@ -291,6 +315,7 @@ function QuestionRow({
         answer_outline: draft.answer_outline,
         difficulty: draft.difficulty,
         requirement_ids: draft.requirement_ids,
+        ...(draft.category === undefined ? {} : { category: draft.category }),
       }),
     );
 
@@ -449,7 +474,13 @@ function CategoryGroup({
     if (!adding) return;
 
     const saved = await editor.run(addKey, (version) =>
-      addQuestion(editor.kit.id, version, { category, ...adding }),
+      addQuestion(editor.kit.id, version, {
+        category,
+        prompt: adding.prompt,
+        answer_outline: adding.answer_outline,
+        difficulty: adding.difficulty,
+        requirement_ids: adding.requirement_ids,
+      }),
     );
 
     if (saved) setAdding(null);

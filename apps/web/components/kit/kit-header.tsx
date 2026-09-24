@@ -3,6 +3,7 @@
 import type { Kit } from '@prep/shared';
 import Link from 'next/link';
 
+import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Dot } from '@/components/ui/typography';
 import { countdown, formatDate, interviewDate, timeAgo } from '@/lib/format';
@@ -68,6 +69,15 @@ export function KitHeader({ stored }: { stored: StoredKit }) {
             {/* Confirms a save landed even when the change was off-screen. */}
             <span>Updated {timeAgo(stored.updatedAt)}</span>
           </p>
+
+          {/* One quiet way in, not a banner on every section. */}
+          <div className="mt-2 flex items-center gap-2">
+            <Link href={`/kits/${stored.id}/interview-day`}>
+              <Button variant="secondary" size="sm">
+                Interview day
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     </header>

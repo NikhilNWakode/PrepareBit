@@ -3,9 +3,11 @@ import type { NextFunction, Request, Response } from 'express';
 
 import { AppError } from '../domain/errors.js';
 import { kitEditService } from '../services/kit-edit.service.js';
+import { practiceService } from '../services/practice.service.js';
 import { regenerationService } from '../services/regeneration.service.js';
 import type {
   AddFlashcardBody,
+  RateCardBody,
   AddQuestionBody,
   EditBriefBody,
   EditFlashcardBody,
@@ -238,6 +240,21 @@ export const kitEditController = {
   regenerateBrief: handle(async (req) =>
     regenerationService.brief(requireUserId(req), kitId(req), version(req.body as VersionedBody)),
   ),
+
+  // --- practice and the briefing ---------------------------------------------
+
+  practice: handle(async (req) => practiceService.session(requireUserId(req), kitId(req))),
+
+  ratePracticeCard: handle(async (req) => ({
+    progress: await practiceService.rate(
+      requireUserId(req),
+      kitId(req),
+      param(req, 'cardId'),
+      (req.body as RateCardBody).confidence,
+    ),
+  })),
+
+  interviewDay: handle(async (req) => practiceService.briefing(requireUserId(req), kitId(req))),
 
   /** No model involved: the schedule is arithmetic over the questions as they are. */
   regenerateSchedule: handle(async (req) => ({

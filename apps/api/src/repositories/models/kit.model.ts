@@ -56,6 +56,13 @@ const kitSchema = new Schema(
     provenance: { type: Schema.Types.Mixed, default: () => ({}) },
 
     /**
+     * How confident the user felt about each flashcard, keyed by flashcard id.
+     * Outside the contract object like everything else here: practice is what
+     * the user did with the kit, not part of the kit.
+     */
+    practice: { type: Schema.Types.Mixed, default: () => ({}) },
+
+    /**
      * The research digest the pipeline produced, kept so that regenerating one
      * part of a kit does not mean crawling and summarising the company again.
      *

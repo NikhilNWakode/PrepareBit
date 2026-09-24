@@ -143,6 +143,8 @@ export interface QuestionPatch {
   answer_outline?: string | undefined;
   difficulty?: number | undefined;
   requirement_ids?: string[] | undefined;
+  /** Moves the question to another category, keeping its id and its content. */
+  category?: QuestionCategory | undefined;
 }
 
 export function editQuestion(
@@ -164,16 +166,43 @@ export function editQuestion(
     ...(patch.requirement_ids === undefined
       ? {}
       : { requirement_ids: [...new Set(patch.requirement_ids)] }),
+    ...(patch.category === undefined ? {} : { category: patch.category }),
   };
 
-  const kit = recomputeCoverage({
-    ...state.kit,
-    questions: state.kit.questions.map((question) =>
-      question.id === questionId ? updated : question,
-    ),
-  });
+  const moved = patch.category !== undefined && patch.category !== existing.category;
 
+  /*
+   * A move rewrites position as well as content: the question is taken out of
+   * where it was and appended to the end of its new category, so the
+   * destination's existing order is left exactly as the user arranged it. An
+   * ordinary edit leaves position alone.
+   */
+  const questions = moved
+    ? placeInCategory(
+        state.kit.questions.filter((question) => question.id !== questionId),
+        updated,
+      )
+    : state.kit.questions.map((question) => (question.id === questionId ? updated : question));
+
+  const kit = recomputeCoverage({ ...state.kit, questions });
+
+  // Marked edited either way, which for a move is what protects it from a
+  // regeneration of the category it arrived in as well as the one it left.
   return { ...state, kit, provenance: markEdited(state.provenance, questionId, now) };
+}
+
+/**
+ * Appends a question to the end of its own category's run, so the stored order
+ * matches how the kit reads. Shared by adding and by moving.
+ */
+function placeInCategory(questions: readonly KitQuestion[], question: KitQuestion): KitQuestion[] {
+  const lastOfCategory = questions.reduce(
+    (position, candidate, index) => (candidate.category === question.category ? index : position),
+    -1,
+  );
+  const insertAt = lastOfCategory === -1 ? questions.length : lastOfCategory + 1;
+
+  return [...questions.slice(0, insertAt), question, ...questions.slice(insertAt)];
 }
 
 export interface NewQuestion {
@@ -198,19 +227,7 @@ export function addQuestion(state: KitState, input: NewQuestion, now: Date): Kit
     difficulty: input.difficulty,
   };
 
-  // Placed with its own category rather than at the end of the array, so the
-  // stored order matches how the kit reads.
-  const lastOfCategory = state.kit.questions.reduce(
-    (position, candidate, index) => (candidate.category === input.category ? index : position),
-    -1,
-  );
-  const insertAt = lastOfCategory === -1 ? state.kit.questions.length : lastOfCategory + 1;
-
-  const questions = [
-    ...state.kit.questions.slice(0, insertAt),
-    question,
-    ...state.kit.questions.slice(insertAt),
-  ];
+  const questions = placeInCategory(state.kit.questions, question);
 
   return {
     kit: recomputeCoverage({ ...state.kit, questions }),

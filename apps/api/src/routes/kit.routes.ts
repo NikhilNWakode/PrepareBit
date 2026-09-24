@@ -14,6 +14,7 @@ import {
   editQuestionSchema,
   editRequirementSchema,
   editScheduleDaySchema,
+  rateCardSchema,
   reorderQuestionsSchema,
   reorderSchema,
   versionedSchema,
@@ -108,6 +109,22 @@ kitRouter.patch(
   validateBody(editScheduleDaySchema),
   edit.editScheduleDay,
 );
+
+/**
+ * Practice and the interview-day briefing.
+ *
+ * A rating deliberately carries no version: it changes no part of the kit, so
+ * it cannot conflict with an edit, and demanding one would manufacture
+ * conflicts rather than catch them.
+ */
+kitRouter.get('/kits/:id/practice', requireAuth, edit.practice);
+kitRouter.post(
+  '/kits/:id/practice/:cardId',
+  requireAuth,
+  validateBody(rateCardSchema),
+  edit.ratePracticeCard,
+);
+kitRouter.get('/kits/:id/interview-day', requireAuth, edit.interviewDay);
 
 /**
  * Regeneration, scoped to one part of the kit each.

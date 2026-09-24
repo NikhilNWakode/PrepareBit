@@ -1,4 +1,4 @@
-import { validateKit, type Kit, type KitQuestion } from '@prep/shared';
+import { validateKit, type Kit, type KitQuestion, type QuestionCategory } from '@prep/shared';
 import { describe, expect, it } from 'vitest';
 
 import { validKit } from '../../test-support/kit-fixture.js';
@@ -116,6 +116,101 @@ describe('editing a question', () => {
     const next = edit.editQuestion(stateOf(before), 'q1', { requirement_ids: ['r2'] }, AT);
 
     expect(next.kit.coverage.passes).toBe(before.coverage.passes);
+  });
+});
+
+/**
+ * Moving a question between categories — a builder requirement from the brief
+ * that Phase 10 missed. The hard part is not the move, it is that a moved
+ * question is content the user deliberately placed, so a regeneration of
+ * *either* category has to leave it alone.
+ */
+describe('moving a question to another category', () => {
+  const move = (state: edit.KitState, id: string, category: QuestionCategory) =>
+    edit.editQuestion(state, id, { category }, AT);
+
+  it('leaves the old category and joins the new one, keeping its id', () => {
+    const next = move(stateOf(validKit()), 'q1', 'behavioural');
+
+    const moved = next.kit.questions.find((question) => question.id === 'q1');
+    expect(moved?.category).toBe('behavioural');
+    expect(moved?.prompt).toBe(validKit().questions[0]?.prompt);
+    expect(next.kit.questions.filter((q) => q.category === 'technical')).toEqual([]);
+  });
+
+  it('appends to the destination rather than disturbing its order', () => {
+    const state = stateOf(kitWithFiveTechnical());
+    const before = state.kit.questions
+      .filter((question) => question.category === 'behavioural')
+      .map((question) => question.id);
+
+    const next = move(state, 'q4', 'behavioural');
+    const after = next.kit.questions
+      .filter((question) => question.category === 'behavioural')
+      .map((question) => question.id);
+
+    expect(after).toEqual([...before, 'q4']);
+  });
+
+  it('is an edit, so regenerating either category preserves it', () => {
+    const next = move(stateOf(kitWithFiveTechnical(), MIXED_PROVENANCE), 'q1', 'behavioural');
+
+    expect(next.provenance['q1']?.edited).toBe(true);
+    // Gone from the category it left...
+    expect(edit.planCategoryRegeneration(next, 'technical').replaceableIds).not.toContain('q1');
+    // ...and protected in the one it joined.
+    expect(edit.planCategoryRegeneration(next, 'behavioural').protectedIds).toContain('q1');
+  });
+
+  it('survives an actual regeneration of the destination category', () => {
+    const moved = move(stateOf(kitWithFiveTechnical(), MIXED_PROVENANCE), 'q1', 'behavioural');
+
+    const fresh: KitQuestion[] = [
+      {
+        id: 'q9',
+        requirement_ids: ['r2'],
+        category: 'behavioural',
+        prompt: 'freshly generated',
+        answer_outline: '',
+        difficulty: 1,
+      },
+    ];
+
+    const after = edit.applyRegeneratedQuestions(
+      moved,
+      'behavioural',
+      fresh,
+      { requirement: 2, question: 9, flashcard: 1 },
+      AT,
+    );
+
+    expect(after.kit.questions.map((question) => question.id)).toContain('q1');
+    expectValid(after.kit);
+  });
+
+  it('recomputes coverage and leaves the kit valid', () => {
+    const before = validKit();
+    const next = move(stateOf(before), 'q1', 'behavioural');
+
+    // The question still covers r1, so nothing became uncovered by moving it.
+    expect(next.kit.coverage.uncovered_requirement_ids).toEqual([]);
+    expect(next.kit.coverage.passes).toBe(before.coverage.passes);
+    expectValid(next.kit);
+  });
+
+  it('keeps the schedule pointing at it', () => {
+    const next = move(stateOf(validKit()), 'q1', 'company-fit');
+
+    expect(next.kit.schedule.days.flatMap((day) => day.question_ids)).toContain('q1');
+    expectValid(next.kit);
+  });
+
+  it('does not reissue an id or create a second copy', () => {
+    const next = move(stateOf(validKit()), 'q1', 'system-design');
+    const ids = next.kit.questions.map((question) => question.id);
+
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(next.counters.question).toBe(2);
   });
 });
 

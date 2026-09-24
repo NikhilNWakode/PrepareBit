@@ -76,6 +76,8 @@ export const editQuestionSchema = z
     difficulty: difficulty.optional(),
     requirement_ids: requirementIds.optional(),
     pinned: z.boolean().optional(),
+    /** Moving a question between categories. The set is closed. */
+    category: z.enum(QUESTION_CATEGORIES).optional(),
   })
   // A patch that changes nothing is a mistake worth naming rather than a
   // silent no-op that still bumps the version for everyone else.
@@ -166,3 +168,15 @@ export type EditBriefBody = z.infer<typeof editBriefSchema>;
 export type EditRequirementBody = z.infer<typeof editRequirementSchema>;
 export type EditScheduleDayBody = z.infer<typeof editScheduleDaySchema>;
 export type VersionedBody = z.infer<typeof versionedSchema>;
+
+/**
+ * A practice rating. No version: a rating cannot conflict with an edit, so
+ * demanding one would only produce conflicts that are not real.
+ */
+export const rateCardSchema = z.object({
+  confidence: z.union([z.literal(1), z.literal(2), z.literal(3)], {
+    message: 'Confidence is 1, 2 or 3.',
+  }),
+});
+
+export type RateCardBody = z.infer<typeof rateCardSchema>;

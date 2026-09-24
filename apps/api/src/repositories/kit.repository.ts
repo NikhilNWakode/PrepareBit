@@ -2,6 +2,7 @@ import type { Kit } from '@prep/shared';
 import { isValidObjectId } from 'mongoose';
 
 import type { IdCounters } from '../domain/kit/ids.js';
+import type { Confidence, PracticeMap } from '../domain/practice/practice-state.js';
 import type { ProvenanceMap } from '../domain/kit/provenance.js';
 import type { ResearchDigest } from '../pipeline/research-digest.js';
 import { KitModel, type KitStatus } from './models/kit.model.js';
@@ -30,6 +31,7 @@ export interface StoredKit {
   input: KitInput;
   kit: Kit | null;
   provenance: ProvenanceMap;
+  practice: PracticeMap;
   idCounters: IdCounters;
   context: KitContext | null;
   research: {
@@ -72,6 +74,7 @@ function toStoredKit(document: any): StoredKit {
     input: document.input,
     kit: document.kit ?? null,
     provenance: document.provenance ?? {},
+    practice: document.practice ?? {},
     idCounters: document.idCounters,
     context: document.context ?? null,
     research: document.research,
@@ -158,6 +161,41 @@ export const kitRepository = {
     // Nothing matched: either the kit is not the caller's, or it moved on.
     const exists = await KitModel.exists({ _id: kitId, userId }).exec();
     return { ok: false, reason: exists ? 'stale' : 'not-found' };
+  },
+
+  /**
+   * Records one practice rating, and deliberately almost nothing else.
+   *
+   * Every other write in this repository goes through `replaceKitContent`,
+   * which revalidates the whole contract object against a version. A rating
+   * does neither, on purpose:
+   *
+   *  - it does not change the kit, so revalidating the entire Appendix A
+   *    object to store one number would be work with no question to answer;
+   *  - it carries no version, because a rating cannot conflict with an edit —
+   *    they touch different fields;
+   *  - `timestamps: false` keeps `updatedAt` where it was, which is the point.
+   *    Bumping it would invalidate the version an editor is holding in another
+   *    tab, and the builder would start refusing saves because the user had
+   *    been practising. A false conflict is worse than no conflict detection.
+   *
+   * One key, set atomically.
+   */
+  async recordPractice(
+    userId: string,
+    kitId: string,
+    cardId: string,
+    entry: { confidence: Confidence; reviewedAt: Date; timesReviewed: number },
+  ): Promise<boolean> {
+    if (!isValidObjectId(kitId)) return false;
+
+    const result = await KitModel.updateOne(
+      { _id: kitId, userId },
+      { $set: { [`practice.${cardId}`]: entry } },
+      { timestamps: false },
+    ).exec();
+
+    return result.matchedCount > 0;
   },
 
   /**
