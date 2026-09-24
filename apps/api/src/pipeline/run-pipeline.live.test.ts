@@ -125,7 +125,9 @@ describe.skipIf(!env.GROQ_API_KEY)('runKitPipeline (live)', () => {
     console.log(`    requirements    : ${kit.role.requirements.length}`);
     console.log(`    questions       : ${kit.questions.length} ${JSON.stringify(byCategory)}`);
     console.log(`    flashcards      : ${kit.flashcards.length}`);
-    console.log(`    uncovered       : ${kit.coverage.uncovered_requirement_ids.join(', ') || 'none'}`);
+    console.log(
+      `    uncovered       : ${kit.coverage.uncovered_requirement_ids.join(', ') || 'none'}`,
+    );
     console.log(`    pages used      : ${kit.source.pages_used.length}`);
     console.log(`    steps           : ${steps.length}`);
     console.log(`    day 1 focus     : ${kit.schedule.days[0]?.focus ?? ''}`);

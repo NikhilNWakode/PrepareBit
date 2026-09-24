@@ -45,9 +45,15 @@ const envSchema = z.object({
   // --- Required from Phase 1 -------------------------------------------------
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().max(65535).default(4000),
-  MONGODB_URI: z.string().min(1, 'is required'),
   WEB_ORIGIN: httpUrl.default('http://localhost:3000'),
-  COOKIE_SECRET: z.string().min(16, 'must be at least 16 characters'),
+
+  // Required by the HTTP server, not by the process as a whole. The batch entry
+  // point touches neither a database nor a cookie, and Section 9 says it must
+  // need "no setup beyond your documented install step" - so demanding a
+  // MongoDB URI to run it would be a barrier for no reason. Enforced instead by
+  // requireServerConfig(), at the point they are actually needed.
+  MONGODB_URI: z.string().min(1).optional(),
+  COOKIE_SECRET: z.string().min(16, 'must be at least 16 characters').optional(),
 
   // --- Optional until the phase that uses them -------------------------------
   // Phase 5 (LLM layer). The provider is named here so no pipeline stage has to
@@ -92,3 +98,34 @@ export const env = {
 } as const;
 
 export type Env = typeof env;
+
+export interface ServerConfig {
+  mongodbUri: string;
+  cookieSecret: string;
+}
+
+/**
+ * Fail-fast for the HTTP server, which genuinely cannot run without these.
+ * Called at startup so a misconfiguration surfaces immediately rather than at
+ * the first request.
+ */
+export function requireServerConfig(): ServerConfig {
+  const missing: string[] = [];
+  if (!env.MONGODB_URI) missing.push('  - MONGODB_URI is required to run the API server');
+  if (!env.COOKIE_SECRET) {
+    missing.push('  - COOKIE_SECRET is required to run the API server (at least 16 characters)');
+  }
+
+  if (missing.length > 0) {
+    const detail = missing.join('\n');
+    console.error(
+      `Invalid environment configuration:\n${detail}\n\nSee .env.example for the full list.`,
+    );
+    process.exit(1);
+  }
+
+  return {
+    mongodbUri: env.MONGODB_URI as string,
+    cookieSecret: env.COOKIE_SECRET as string,
+  };
+}

@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-import { env } from '../config/env.js';
+import { requireServerConfig } from '../config/env.js';
 import { logger } from '../logger.js';
 
 /**
@@ -17,7 +17,8 @@ export async function connectToDatabase(): Promise<void> {
     logger.warn('mongodb disconnected');
   });
 
-  await mongoose.connect(env.MONGODB_URI, { serverSelectionTimeoutMS: 10_000 });
+  const { mongodbUri } = requireServerConfig();
+  await mongoose.connect(mongodbUri, { serverSelectionTimeoutMS: 10_000 });
   logger.info('mongodb connected');
 }
 

@@ -1,0 +1,32 @@
+[
+  {
+    "id": "case-01-normal",
+    "jd": "Senior Backend Engineer - Freight Platform\n\nWe are looking for a senior backend engineer to own the services that plan and settle multi-drop freight routes for our European operators.\n\nWhat you will do:\n- Own the routing service end to end, from design through to production support\n- Work with dispatch operations to turn real-world constraints into software\n- Help set the technical direction of the backend team\n\nRequired:\n- 5+ years building production backend services with Node.js and TypeScript\n- Strong PostgreSQL skills, including query tuning and schema design\n- Experience designing and operating event-driven systems at scale\n- Experience mentoring junior engineers and reviewing their work\n\nNice to have:\n- Bonus points for exposure to Kafka or similar streaming platforms\n- Familiarity with the logistics or transport domain is a plus",
+    "company_url": "http://localhost:8099/acme/",
+    "days": 5
+  },
+  {
+    "id": "case-02-thin-jd",
+    "jd": "Backend engineer wanted. Must know Go.",
+    "company_url": "http://localhost:8099/acme/",
+    "days": 3
+  },
+  {
+    "id": "case-03-no-hiring-page",
+    "jd": "Embedded Software Engineer\n\nQuiet Instruments is hiring an embedded engineer to work on our vibration sensor firmware.\n\nRequired:\n- 3+ years of embedded C development on ARM Cortex-M\n- Experience with real-time signal processing\n- Comfortable reading oscilloscope traces and datasheets\n\nNice to have:\n- Exposure to Rust on embedded targets is a plus",
+    "company_url": "http://localhost:8099/nohire/",
+    "days": 7
+  },
+  {
+    "id": "case-04-unreachable-company",
+    "jd": "Platform Engineer\n\nWe need a platform engineer to run our Kubernetes estate.\n\nRequired:\n- 4+ years operating Kubernetes in production\n- Strong Terraform and CI/CD experience\n- Experience with on-call and incident response\n\nNice to have:\n- Bonus points for Go",
+    "company_url": "http://localhost:9/does-not-exist/",
+    "days": 4
+  },
+  {
+    "id": "case-05-long-schedule",
+    "jd": "Staff Frontend Engineer\n\nYou will lead the front end of our dispatch console, used daily by operators to move freight.\n\nWhat you will do:\n- Set the direction for our React application and its design system\n- Work directly with dispatchers to shape the interface around their workflow\n\nRequired:\n- 7+ years of professional frontend development\n- Deep React and TypeScript experience, including performance profiling\n- A track record of accessible, keyboard-navigable interfaces\n- Experience mentoring other frontend engineers\n\nNice to have:\n- Ideally some experience with mapping or geospatial interfaces\n- Familiarity with logistics is a plus",
+    "company_url": "http://localhost:8099/acme/",
+    "days": 30
+  }
+]

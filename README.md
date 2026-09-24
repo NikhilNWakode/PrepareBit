@@ -4,10 +4,8 @@ Turns a pasted job description, a company website and a number of days before th
 interview into a structured, reshapeable interview preparation kit: a company brief,
 a role breakdown, a categorised question bank, flashcards and a day-by-day schedule.
 
-> **Status: Phase 7 (deterministic core).** Foundation, authentication, the Appendix A
-> schema, persistence, retrieval, the model-calling layer, the generation stages and
-> the coverage/schedule/orchestration core are in place. The batch command and the UI
-> follow.
+> **Status: Phase 8 (batch entry point).** The whole backend path is in place and the
+> batch command runs end to end. The web interface follows.
 
 ## Tech stack
 
@@ -531,6 +529,75 @@ Worth noting from that run: the rate limiter blocked for 40s before one call, wh
 most of the wall clock. That is the limiter working as intended — waiting costs less than
 a 429 — but it shows the two model buckets are not evenly loaded. The timed five-case run
 in the batch phase is the right place to tune that, with data rather than a guess.
+
+## The batch entry point
+
+```bash
+npm run fixtures     # serves the local company sites on :8099
+npm run evaluate -- --input fixtures/cases.json --output kits.json
+```
+
+It drives `runKitPipeline` — the same code the HTTP API uses — rather than a second
+implementation, and writes Appendix B exactly.
+
+**Only `GROQ_API_KEY` is needed.** The command touches no database, so `MONGODB_URI` and
+`COOKIE_SECRET` are required by the API server alone and validated at its startup rather
+than globally. A fresh clone runs the command with nothing but a Groq key in `.env`.
+
+One provider, and therefore one rate limiter, is shared across every case, so the token
+budget is tracked across the whole run. A provider per case would each believe it had the
+full per-minute allowance and collect 429s. Cases run sequentially: the shared limiter
+serialises the model calls anyway, so concurrency would only overlap crawling.
+
+### ok, failed, and the case in between
+
+The pipeline has three outcomes and Appendix B has two, so the mapping is explicit:
+
+| Pipeline     | Batch                 | Reasoning                                                                                                                                                                                                                                                                                                         |
+| ------------ | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ok`         | `ok`                  | —                                                                                                                                                                                                                                                                                                                 |
+| `incomplete` | `ok`, kit written     | The FAQ reserves `failed` for "a case you could not produce a kit for at all" and says a partially researched case is still ok "with the gaps recorded honestly in the kit". The uncovered ids are already named in `coverage.uncovered_requirement_ids`, so nothing is hidden and a usable kit is not discarded. |
+| `failed`     | `failed`, `kit: null` | No kit exists to write.                                                                                                                                                                                                                                                                                           |
+
+A three-way pipeline status is what makes that a decision rather than an accident:
+`incomplete` cannot fall through to success without a line of code choosing it.
+
+**Retrieval problems do not fail a case.** An unreachable company degrades to a kit built
+from the job description alone, with the brief saying plainly that nothing could be found.
+
+### Failure isolation and deadlines
+
+Every case is wrapped so nothing it does can end the run, and each has a wall-clock
+deadline. The deadline **cancels** rather than merely stops waiting: the abort signal is
+bound to the provider, so a timed-out case stops spending tokens the remaining cases still
+need.
+
+A malformed case is one `failed` entry rather than a rejected file — array shape is a usage
+error, individual case validity is not. A case with no usable id still gets one, derived
+from its position (`input-index-2`), so every input has exactly one output entry.
+
+The output is validated against Appendix B before it is written, so the file is either
+well formed or absent.
+
+### Measured
+
+Five cases against the fixture sites, with the real provider:
+
+|          |                                                  |
+| -------- | ------------------------------------------------ |
+| Result   | **5 ok, 0 failed in 3.5 minutes**, 59,894 tokens |
+| Limit    | 15 minutes                                       |
+| Contract | every kit validates against Appendix A           |
+| Coverage | zero uncovered must-haves across all five        |
+
+The run exercised the rate limiter for real — one 429 retried successfully and a 7.3s
+budget wait — which is the "including any retries rate limits force" clause working rather
+than being hoped for. Because the limiter absorbed it comfortably, the model-tier
+rebalancing considered after Phase 7 was **not** made: the benchmark said it was not needed.
+
+The cases cover what the brief says it tests: a normal posting, a two-line description
+(one requirement, not padded), a company with no hiring page anywhere (reported as having
+none), an unreachable company URL (degraded, not failed), and a 30-day schedule.
 
 ## Testing
 
