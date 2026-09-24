@@ -3,12 +3,32 @@ import { createServer } from 'node:http';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './logger.js';
+import { kitRepository } from './repositories/kit.repository.js';
 import { connectToDatabase, disconnectFromDatabase } from './repositories/connection.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
+/**
+ * Generation runs in this process, so a restart abandons anything mid-flight.
+ * Those kits would otherwise sit in `researching` forever while the interface
+ * polls them. Marking them failed is honest and lets the user retry; they are
+ * never deleted, and never marked completed without a real result.
+ */
+const STALE_GENERATION_MS = 15 * 60 * 1000;
+
+async function recoverOrphanedGenerations(): Promise<void> {
+  const failed = await kitRepository.failStaleGenerations(
+    new Date(Date.now() - STALE_GENERATION_MS),
+  );
+
+  if (failed > 0) {
+    logger.warn('recovered kits left mid-generation by a previous run', { count: failed });
+  }
+}
+
 async function main(): Promise<void> {
   await connectToDatabase();
+  await recoverOrphanedGenerations();
 
   const server = createServer(createApp());
   await new Promise<void>((resolve) => server.listen(env.PORT, resolve));

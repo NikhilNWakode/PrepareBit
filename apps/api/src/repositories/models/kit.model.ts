@@ -86,7 +86,16 @@ const kitSchema = new Schema(
 
 // The dashboard list: a user's kits, newest first.
 kitSchema.index({ userId: 1, createdAt: -1 });
-// The duplicate-submission check in Phase 6.
-kitSchema.index({ userId: 1, fingerprint: 1 });
+
+/**
+ * Unique, and deliberately so: this is the final authority on duplicate
+ * submissions, not the read that precedes the write.
+ *
+ * Two simultaneous requests for the same posting can both see no existing kit
+ * and both try to create one. The database settles it; the loser catches the
+ * duplicate-key error and returns the kit that won, rather than starting a
+ * second expensive generation for the same input.
+ */
+kitSchema.index({ userId: 1, fingerprint: 1 }, { unique: true });
 
 export const KitModel = model('Kit', kitSchema);
