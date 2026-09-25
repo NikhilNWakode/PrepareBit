@@ -4,8 +4,9 @@ Turns a pasted job description, a company website and a number of days before th
 interview into a structured, reshapeable interview preparation kit: a company brief,
 a role breakdown, a categorised question bank, flashcards and a day-by-day schedule.
 
-> **Status: Phase 8 (batch entry point).** The whole backend path is in place and the
-> batch command runs end to end. The web interface follows.
+> **Status:** feature-complete. Generation, the builder, practice and the interview-day
+> briefing all work end to end, with 579 tests. Not yet deployed — see
+> [Deployment](#deployment).
 
 ## Tech stack
 
@@ -24,14 +25,19 @@ newest compiler. Revisit once the plugin ships support.
 ## Layout
 
 ```
-packages/shared/   contract shared by API and web (error envelope now, kit schema in Phase 3)
+packages/shared/   the Appendix A kit schema and the error envelope, shared by API and web
 apps/api/          Express service, generation pipeline and the batch CLI
 apps/web/          Next.js application
 ```
 
 `apps/api/src` separates concerns by layer: `routes` and `middleware` (HTTP),
-`services` (application), `domain` (pure logic), `repositories` (persistence), with
-`retrieval`, `ai`, `pipeline`, `coverage` and `scheduling` added as their phases land.
+`services` (application), `domain` (pure logic), `repositories` (persistence), alongside
+`retrieval`, `ai`, `pipeline`, `coverage`, `scheduling` and `batch`.
+
+The rules worth arguing about are pure functions under `domain/` — `edit-kit.ts`,
+`practice/order-queue.ts`, `practice/interview-day.ts`, `scheduling/allocate-schedule.ts`,
+`coverage/check-coverage.ts`. None of them import Express or Mongoose, which is why they
+are tested directly rather than through HTTP.
 The generation pipeline never imports Express or Mongoose, so the HTTP API and the
 batch CLI can both drive the same implementation.
 
@@ -50,18 +56,118 @@ web app on `http://localhost:3000`. The browser only ever talks to port 3000: Ne
 rewrites `/api/*` to Express, which keeps the session cookie same-origin in both local
 development and the deployed split.
 
+`GROQ_API_KEY` is the only other value you need. Get a free one from
+[console.groq.com](https://console.groq.com) — no card required.
+
+> If `PORT` is exported in your shell, the API picks it up and collides with Next on 3000.
+> `unset PORT` first if you see `EADDRINUSE :::3000`.
+
+### Trying it without a real company site
+
+```bash
+npm run fixtures
+```
+
+Serves a fake company on `http://localhost:8099` — an about page, a handbook and a hiring
+page — so the whole crawl can be exercised without depending on anyone's real website, and
+deterministically. Use `http://localhost:8099/acme/` as the company URL. The bundled batch
+cases point at it.
+
+### Deployment
+
+**Not deployed yet.** Nothing in the application needs to change to deploy it: `trust proxy`
+is already set, CORS is bound to `WEB_ORIGIN`, `/health` exists for uptime checks, shutdown
+is graceful, and the SSRF guard turns itself on from `NODE_ENV`. What follows is the
+sequence, on MongoDB Atlas + Render (API) + Vercel (web), all free tiers.
+
+**1. Database — Atlas**
+
+Create an M0 cluster, add a database user, and allow network access from anywhere
+(Render's egress addresses are not fixed on the free tier). Take the connection string and
+append the database name:
+
+```
+mongodb+srv://USER:PASSWORD@cluster.mongodb.net/preparebit?retryWrites=true&w=majority
+```
+
+**2. API — Render**
+
+New → Web Service → connect this repository. Root directory stays the repo root.
+
+```bash
+# Build
+npm ci && npm run build --workspace @prep/shared && npm run build --workspace @prep/api
+
+# Start
+node apps/api/dist/server.js
+```
+
+> **The one real trap.** `@prep/shared` resolves through the npm workspace symlink to
+> `packages/shared/dist`. If it has not been compiled, the API fails at import time with a
+> module-not-found that points at `node_modules` rather than at the build order. Build
+> shared first, always.
+
+Health check path: `/health`. Environment:
+
+| Variable        | Value                                                     |
+| --------------- | --------------------------------------------------------- |
+| `NODE_ENV`      | `production`                                              |
+| `MONGODB_URI`   | the Atlas string from step 1                              |
+| `COOKIE_SECRET` | 32 random bytes — `openssl rand -hex 32`                  |
+| `GROQ_API_KEY`  | your key                                                  |
+| `WEB_ORIGIN`    | the Vercel URL — placeholder for now, corrected in step 4 |
+
+Do **not** set `ALLOW_PRIVATE_URLS`. It defaults to false when `NODE_ENV=production`, which
+is exactly what you want: in production it is the SSRF guard, and the only reason it is ever
+true is so the batch command can crawl the local fixture site.
+
+The server refuses to start without `MONGODB_URI` and `COOKIE_SECRET`, listing what is
+missing — so a misconfiguration shows up in the deploy log rather than at the first request.
+
+**3. Web — Vercel**
+
+Import the repository. Root directory `apps/web`, framework Next.js, build and output left
+at their defaults. One environment variable:
+
+| Variable     | Value                      |
+| ------------ | -------------------------- |
+| `API_ORIGIN` | the Render URL from step 2 |
+
+`API_ORIGIN` is read by [`next.config.ts`](apps/web/next.config.ts) and **baked into the
+rewrite at build time**, so it has to be a project environment variable and a change to it
+needs a redeploy, not just a restart.
+
+**4. Close the loop**
+
+Set `WEB_ORIGIN` on Render to the Vercel URL and redeploy. The two hosts each need to know
+the other's address, so one of them is always configured with a placeholder first; doing the
+API first means the web app never points at nothing.
+
+**About the session cookie.** The browser only ever talks to the Vercel origin — Next
+rewrites `/api/*` to Express **server-side**, so `Set-Cookie` comes back through the Vercel
+origin and binds there. It stays a first-party cookie across the split, which is why
+`SameSite=Lax` is correct and no third-party cookie is involved. `secure` follows
+`NODE_ENV`. See [`cookies.ts`](apps/api/src/config/cookies.ts).
+
+**Expect a cold start.** Render's free tier sleeps after 15 minutes of inactivity and takes
+roughly 50 seconds to wake. The first request after a quiet period is slow, and since
+generation itself takes about a minute, a first-time visitor can wait a while before
+anything appears. Keeping it warm with a scheduled ping would work and is deliberately not
+done: dodging a free tier's limits on a timer is not something worth defending in a review.
+
 ### Commands
 
-| Command                                                         | Does                                       |
-| --------------------------------------------------------------- | ------------------------------------------ |
-| `npm run dev`                                                   | Runs shared, API and web together          |
-| `npm run build`                                                 | Production build of all three workspaces   |
-| `npm start`                                                     | Runs the compiled API                      |
-| `npm test`                                                      | Vitest                                     |
-| `npm run typecheck`                                             | `tsc --noEmit` per workspace               |
-| `npm run lint`                                                  | ESLint                                     |
-| `npm run format`                                                | Prettier                                   |
-| `npm run evaluate -- --input <cases.json> --output <kits.json>` | Batch entry point (implemented in Phase 8) |
+| Command                                                         | Does                                     |
+| --------------------------------------------------------------- | ---------------------------------------- |
+| `npm run dev`                                                   | Runs shared, API and web together        |
+| `npm run build`                                                 | Production build of all three workspaces |
+| `npm start`                                                     | Runs the compiled API                    |
+| `npm test`                                                      | Vitest                                   |
+| `npm run typecheck`                                             | `tsc --noEmit` per workspace             |
+| `npm run lint`                                                  | ESLint                                   |
+| `npm run format`                                                | Prettier                                 |
+| `npm run evaluate -- --input <cases.json> --output <kits.json>` | Batch entry point                        |
+| `npm run fixtures`                                              | Serves the fixture company site on :8099 |
 
 ## Environment
 
@@ -150,6 +256,15 @@ Provenance is a sidecar map keyed by item id, not extra fields on each question,
 object handed to the grader stays exactly the shape the brief specifies and the batch
 command can emit it untouched. One predicate, `isProtected`, decides what a regeneration
 may replace: generated and untouched, and nothing else.
+
+```ts
+{ origin: 'generated' | 'user', edited: boolean, pinned: boolean, updatedAt: Date }
+```
+
+A **missing entry means generated and replaceable**, so the map records deviations from the
+default rather than an entry per item. Three sidecars sit beside the contract object on the
+same document — `provenance`, `practice` and `context` (the research digest) — and none of
+them is ever written inside `kit`. See [The builder](#the-builder).
 
 ### Storage
 
@@ -295,17 +410,36 @@ resynchronise the local view so it cannot drift over a long batch run.
 Concurrency is deliberately **1**. Against an 8K/minute ceiling, parallel calls mostly
 produce 429s, and the batch entry point is judged on finishing, not on speed.
 
-### Reasoning tokens — measured, not assumed
+### Reasoning tokens — measured twice, the second time the hard way
 
-The gpt-oss models are reasoning models: they spend hidden reasoning tokens from the same
-completion budget before emitting anything. Measured against the live API, asking which
-language "hola" is — a two-word answer — consumed **133 completion tokens, 111 of them
-reasoning**. A 100-token cap produced an _empty_ generation and a `json_validate_failed`
-400 that appeared to blame the schema.
+The gpt-oss models spend hidden reasoning tokens from the same completion budget before
+emitting anything. Measured against the live API, asking which language "hola" is — a
+two-word answer — consumed **133 completion tokens, 111 of them reasoning**. A 100-token
+cap produced an _empty_ generation and a `json_validate_failed` 400 that appeared to blame
+the schema. So the budget is floored at 512 tokens whatever a caller asks for.
 
-The completion budget is therefore floored at 512 tokens regardless of what a caller asks
-for, and the smallest realistic call costs ~300 tokens. That figure sizes the Phase 6
-budget rather than an assumption.
+That floor was not enough. A real 1,725-character posting failed in the interface with
+_"Requirement extraction failed: the model could not produce output matching the requested
+schema"_ — the same misleading error, at a larger scale. Reproduced against the API with
+the identical prompt three times:
+
+| Model        | Reasoning | JSON | Total |
+| ------------ | --------: | ---: | ----: |
+| gpt-oss-20b  |     2,890 |  633 | 3,523 |
+| gpt-oss-20b  |     1,757 |  685 | 2,442 |
+| gpt-oss-120b |     1,260 |  683 | 1,943 |
+
+Two things follow. **Reasoning varies by more than 2x on identical input**, so a cap sized
+for the typical case fails intermittently on the same posting — the worst kind of failure
+to diagnose. And **it does not grow with the input**: the longer posting reasoned less.
+
+So a stage now declares how much _output_ it needs and the provider adds 4,000 tokens of
+headroom on top, clamped to 7,000 so one call stays inside a minute of the free-tier
+budget. This is a ceiling, not a spend — the budget is charged on tokens actually used, so
+the headroom costs nothing on an easy call and is the difference between a kit and an error
+on a hard one. A truncated answer is now reported as running out of budget rather than as a
+schema failure, and `INVALID_MODEL_RESPONSE` became retryable: given that variance, a failed
+generation is a dice roll rather than a property of the request.
 
 ### Structured output
 
@@ -530,6 +664,149 @@ most of the wall clock. That is the limiter working as intended — waiting cost
 a 429 — but it shows the two model buckets are not evenly loaded. The timed five-case run
 in the batch phase is the right place to tune that, with data rather than a guess.
 
+## The builder
+
+A kit is generated once and then reshaped by hand. Every change follows one path:
+
+```
+load → pure transformation → revalidate the whole contract → write once, or write nothing
+```
+
+Funnelling every edit through `mutate` in `kit-edit.service.ts` means no endpoint can forget
+the checks. The contract is revalidated on **every** change, so the document in Mongo is
+always a legal Appendix A object: a schedule can never point at a question somebody deleted,
+because that edit is refused rather than stored.
+
+Editable: questions (text, outline, difficulty, which requirements they assess, category),
+flashcards, the company brief, requirement text and priority, and a day's focus. Questions
+and flashcards can be added, deleted, reordered and pinned.
+
+**Requirements cannot be added or deleted**, and that is deliberate. They are what the
+posting asked for; the honest operation is correcting one the extraction got wrong, not
+inventing one the employer never stated — which would quietly turn the coverage figure into
+fiction.
+
+### A regeneration that preserves edits
+
+This is the state problem the brief calls the hardest one, so it is worth being precise:
+
+1. Partition the category with `isProtected` — user-written, edited or pinned on one side,
+   plain generated on the other.
+2. Generate replacements. Their ids come from the monotonic counters, so a new question can
+   collide neither with a protected one nor with anything deleted earlier.
+3. The new category is the protected questions **in their existing order**, then the fresh
+   ones. Other categories, the flashcards and the brief are not read, let alone written.
+4. Prune the discarded ids from the schedule, recompute coverage, validate, persist.
+
+Regenerating the brief _does_ overwrite an edited brief, after saying so. The preservation
+rule stops an edit being caught up in a regeneration aimed at its neighbours; it does not
+override an instruction pointed at the thing itself.
+
+The interface states what will be kept before it runs — _"3 questions you have edited,
+written or pinned will be kept; 3 generated questions will be replaced"_ — because a promise
+nobody can see being kept is indistinguishable from one that is not there.
+
+### Moving a question between categories
+
+A moved question keeps its id, is appended to the destination, and is marked edited. That
+last part matters: it is content the user deliberately placed, so regenerating **either**
+the category it left or the one it joined has to leave it alone.
+
+### Coverage is computed, never edited
+
+Anything that touches questions or requirements recomputes `uncovered_requirement_ids` from
+the kit itself. `coverage.passes` counts the rounds the _generator_ ran, so only a
+regeneration increments it — an ordinary edit recomputes coverage without inflating the
+figure that describes how hard the pipeline worked.
+
+### Two tabs
+
+Every mutating request carries the `updatedAt` it was made against, and the repository puts
+it in the query. The write is therefore one atomic compare-and-set: a stale write matches
+nothing and comes back **409** with a banner offering a reload, rather than silently
+discarding what the other tab did.
+
+## Practice mode
+
+Flashcards one at a time: the question, then `Show answer`, then three confidence levels.
+Confidence cannot be given before the answer is revealed, because rating a guess is rating
+nothing. Fully keyboard-driven — `Space` reveals, `1`/`2`/`3` rate, `Esc` leaves — with the
+shortcuts suppressed while typing in a field.
+
+### Ordering, and why it is not spaced repetition
+
+The brief allows either and asks for the choice to be defended.
+
+| Rank | Card       | Why                                                                                                                 |
+| ---: | ---------- | ------------------------------------------------------------------------------------------------------------------- |
+|    0 | never seen | An unrated card is an unmeasured risk; you cannot call something your weakest subject before you have looked at it. |
+|    1 | low        | Known weak.                                                                                                         |
+|    2 | medium     |                                                                                                                     |
+|    3 | high       |                                                                                                                     |
+
+Ties break on least recently reviewed, then on id so the order is fully determined and can
+be asserted in a test.
+
+Spaced repetition was rejected on the shape of the problem, not on difficulty. Intervals
+optimise retention over weeks; this product is built around a countdown usually measured in
+days, and telling someone with five days left to come back on Thursday answers a question
+they are not asking.
+
+### The queue is decided once
+
+`GET /api/kits/:id/practice` returns an ordered queue and the client holds that order for
+the whole run. Rating a card low does **not** shuffle it back under the person answering it;
+leaving and starting again builds a fresh queue from the latest ratings, which is where the
+weighting actually pays off. There is no session entity — "what has been covered" is simply
+whether a card has ever been rated.
+
+### A rating is not an edit
+
+`POST /api/kits/:id/practice/:cardId` deliberately bypasses the mutation funnel above. It
+revalidates no contract, carries no version, and is written with `{ timestamps: false }` so
+it does not touch `updatedAt`.
+
+The reason is concrete: someone editing a question in another tab is holding `updatedAt` as
+their version. If practising moved it, their next save would be refused as stale for a
+reason they could not possibly guess. **A false conflict is worse than no conflict
+detection**, and there is a test that practises and then saves an in-flight edit.
+
+## Interview Day — the creative feature
+
+**The problem.** A candidate can spend a week reading preparation material and still have no
+way to walk into the room. The kit is thorough by design, which is exactly wrong for the
+five minutes before a call.
+
+`/kits/:id/interview-day` composes what is already stored into a briefing: company, role,
+the countdown, the must-have requirements, what the research actually found, reminders, and
+questions to ask back.
+
+**It calls no model and fetches nothing.** Every line is selected from data the kit already
+holds, which is why it is a pure function with tests rather than a prompt with hopes. Where
+the kit knows nothing about a company, the page says so instead of filling the space.
+
+The most useful part is usually the reminders, because they come from the hiring pages the
+crawl found — _"Take-home exercise – a small routing problem timeboxed to three hours"_ is
+something the candidate can act on, and it is the company's own words.
+
+### Questions to ask the interviewer
+
+Deterministic templates filled from the kit's own requirements, responsibilities and
+research, each carrying the basis it was built from. A template with nothing to fill it is
+skipped rather than emitted with a placeholder.
+
+One detail took two attempts. Requirements are written as things a _candidate_ has — "At
+least five years of experience building streaming pipelines" — but a question to the
+interviewer is about the _work_. Dropped in raw, that produced:
+
+> What is the biggest challenge the team is working on around at least five years of
+> experience building batch and streaming data…?
+
+which tells a reader the whole feature was mail-merged. `requirementSubject` now strips the
+qualifier deterministically down to the subject, and the same question reads:
+
+> What is the hardest problem the team is facing with batch and streaming data pipelines?
+
 ## The batch entry point
 
 ```bash
@@ -593,11 +870,55 @@ Five cases against the fixture sites, with the real provider:
 The run exercised the rate limiter for real — one 429 retried successfully and a 7.3s
 budget wait — which is the "including any retries rate limits force" clause working rather
 than being hoped for. Because the limiter absorbed it comfortably, the model-tier
-rebalancing considered after Phase 7 was **not** made: the benchmark said it was not needed.
+rebalancing I had been considering was **not** made: the benchmark said it was not needed.
 
 The cases cover what the brief says it tests: a normal posting, a two-line description
 (one requirement, not padded), a company with no hiring page anywhere (reported as having
 none), an unreachable company URL (degraded, not failed), and a 30-day schedule.
+
+## Known limitations
+
+Things I decided not to build, and what it would take to change each one. None of them is
+an oversight; each is a trade I would defend, and would revisit under different constraints.
+
+**Generation runs in-process.** No queue, no worker. A restart mid-generation orphans a kit,
+which `failStaleGenerations` marks failed and retryable on boot. A persisted state machine
+driven by a controlled async service is the right size for a minute-long job at this scale;
+the pipeline takes its dependencies by injection, so moving it behind a real queue is a
+change to the runner and nothing else.
+
+**Rate limiting is per-instance.** A fixed window in memory. Correct for one API process;
+on several it becomes a per-instance limit, and the fix is a shared store rather than a
+cleverer local one.
+
+**Practice entries outlive deleted flashcards.** Deliberate: ids are never reused, so a
+stale entry cannot be misattributed, and every reader walks the kit's flashcards rather than
+the map's keys. Pruning would mean threading practice through the edit funnel to delete a
+key nothing reads.
+
+**Practice covers flashcards, not questions.** The brief asks for flashcards. Question
+practice without answer evaluation is a text box that grades nothing, and evaluation is a
+different product decision — one I would want to make deliberately rather than as a
+by-product of this phase.
+
+**Interview Day is read-only.** Marking questions to keep would need a new persisted entity;
+the briefing itself is the feature.
+
+**Requirements cannot be added or deleted, and a question cannot move between days.** The
+first would let coverage describe requirements the posting never made. The second would
+break the introduce-exactly-once invariant the schedule rests on; rebuilding the plan is the
+supported path.
+
+**Reordering is buttons, not drag and drop.** Move up / move down is operable by keyboard
+and on a phone by construction, and the move is announced. Dragging without a keyboard path
+would cost more in accessibility than it gains in polish.
+
+**One posting produces one kit per day count.** `days` is part of the fingerprint, so the
+same posting for five days and for ten days is genuinely two kits. Submitting the same pair
+twice returns the existing kit rather than spending another minute of generation on it.
+
+**Not deployed.** See [Deployment](#deployment) for what is needed and the two changes that
+go with it.
 
 ## Testing
 
@@ -633,3 +954,8 @@ whose whole deterministic core is testable without a database.
 ```bash
 npm run typecheck && npm run lint && npm test && npm run build
 ```
+
+All four are clean, with **579 tests across 38 files**. The deterministic core — coverage,
+schedule allocation, contract validation, the editing rules, the practice queue and the
+interview-day composition — is tested without a database or a network, which is why those
+suites run from a clean clone in a few seconds.
