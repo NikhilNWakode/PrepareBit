@@ -38,8 +38,9 @@ The rules worth arguing about are pure functions under `domain/` — `edit-kit.t
 `practice/order-queue.ts`, `practice/interview-day.ts`, `scheduling/allocate-schedule.ts`,
 `coverage/check-coverage.ts`. None of them import Express or Mongoose, which is why they
 are tested directly rather than through HTTP.
-The generation pipeline never imports Express or Mongoose, so the HTTP API and the
-batch CLI can both drive the same implementation.
+
+Neither does the generation pipeline, which is why the HTTP API and the batch command can
+both drive the same implementation rather than each having its own.
 
 ## Running locally
 
@@ -222,10 +223,8 @@ Other decisions in this layer:
   session cookie, but that is routing convenience — it cannot validate the cookie and is
   not relied on.
 
-### Known limitation
-
-The login rate limiter is an in-memory fixed window, so its budget is per-process. On more
-than one instance the correct fix is a shared store, not a cleverer local one.
+The login rate limiter is an in-memory fixed window, which is per-process — see
+[Known limitations](#known-limitations).
 
 ## The kit contract
 
@@ -603,7 +602,9 @@ loop — a nice-to-have gap is worth knowing about, not worth spending tokens on
 
 ### The second pass, and when it stops
 
-At most **two gap rounds**, so `coverage.passes` is 1, 2 or 3. Each round sends only the
+At most **two gap rounds**, so a freshly generated kit has `coverage.passes` of 1, 2 or 3.
+(Regenerating a question category runs a genuine further check and increments it, so an
+edited kit can be higher — see [The builder](#the-builder).) Each round sends only the
 uncovered requirements, grouped by kind and routed through one deterministic mapping:
 technical → technical, behavioural → behavioural, domain → system-design.
 
@@ -661,8 +662,8 @@ One complete case against the fixture site and the real provider:
 
 Worth noting from that run: the rate limiter blocked for 40s before one call, which was
 most of the wall clock. That is the limiter working as intended — waiting costs less than
-a 429 — but it shows the two model buckets are not evenly loaded. The timed five-case run
-in the batch phase is the right place to tune that, with data rather than a guess.
+a 429 — but it shows the two model buckets are not evenly loaded. The five-case run under
+[Measured](#measured) settled whether that was worth tuning.
 
 ## The builder
 
