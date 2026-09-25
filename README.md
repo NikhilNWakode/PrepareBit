@@ -4,6 +4,10 @@ Turns a pasted job description, a company website and a number of days before th
 interview into a structured, reshapeable interview preparation kit: a company brief,
 a role breakdown, a categorised question bank, flashcards and a day-by-day schedule.
 
+**Live:** [prepare-bit-web.vercel.app](https://prepare-bit-web.vercel.app/) — the API is on
+Render behind it. The free tier sleeps after 15 minutes, so the first request after a quiet
+spell takes around a minute to wake; after that it is quick.
+
 ## Tech stack
 
 | Layer      | Choice                                   | Why                                                                                           |
@@ -72,10 +76,16 @@ cases point at it.
 
 ### Deployment
 
-**Not deployed yet.** Nothing in the application needs to change to deploy it: `trust proxy`
-is already set, CORS is bound to `WEB_ORIGIN`, `/health` exists for uptime checks, shutdown
-is graceful, and the SSRF guard turns itself on from `NODE_ENV`. What follows is the
-sequence, on MongoDB Atlas + Render (API) + Vercel (web), all free tiers.
+Deployed on MongoDB Atlas + Render (API) + Vercel (web), all free tiers:
+
+|     |                                                                   |
+| --- | ----------------------------------------------------------------- |
+| Web | [prepare-bit-web.vercel.app](https://prepare-bit-web.vercel.app/) |
+| API | [preparebit.onrender.com](https://preparebit.onrender.com/health) |
+
+No application code changed to get there: `trust proxy` was already set, CORS is bound to
+`WEB_ORIGIN`, `/health` exists for uptime checks, shutdown is graceful, and the SSRF guard
+turns itself on from `NODE_ENV`. What follows is the sequence, so it can be reproduced.
 
 **1. Database — Atlas**
 
