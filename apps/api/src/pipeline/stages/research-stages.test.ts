@@ -37,6 +37,7 @@ function research(overrides: Partial<ResearchResult> = {}): ResearchResult {
     ],
     interviewReports: [],
     pagesFailed: [],
+    searchUsed: '',
     notes: [],
     hiringPagesFound: ['https://acme.example/handbook/how-we-hire'],
     ...overrides,

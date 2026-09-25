@@ -120,6 +120,7 @@ describe.skipIf(!env.GROQ_API_KEY)('pipeline stages (live)', () => {
         pages: research.pages,
         interviewReports: [],
         pagesFailed: research.pagesFailed,
+        searchUsed: '',
         notes: research.notes,
         hiringPagesFound: research.hiringPagesFound,
       },

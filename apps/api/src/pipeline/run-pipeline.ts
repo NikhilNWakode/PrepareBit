@@ -74,6 +74,20 @@ export interface PipelineContext {
   counters: IdCounters;
 }
 
+/**
+ * What retrieval managed and failed to reach.
+ *
+ * Carried out of the pipeline rather than left in it, because a caller storing
+ * a kit has to be able to say *why* a page was skipped. "No pages could be
+ * retrieved" is the same sentence whether the site was unreachable, refused by
+ * robots.txt, or simply larger than the response cap — and those need different
+ * things from the user.
+ */
+export interface PipelineResearch {
+  pagesFailed: { url: string; reason: string }[];
+  searchUsed: string;
+}
+
 export type PipelineOutcome =
   | {
       status: 'ok';
@@ -82,6 +96,7 @@ export type PipelineOutcome =
       usage: LlmUsage;
       passes: number;
       context: PipelineContext;
+      research: PipelineResearch;
     }
   | {
       status: 'incomplete';
@@ -90,6 +105,7 @@ export type PipelineOutcome =
       usage: LlmUsage;
       passes: number;
       context: PipelineContext;
+      research: PipelineResearch;
       error: { code: PipelineFailureCode; message: string };
     }
   | {
@@ -195,6 +211,7 @@ export async function runKitPipeline(
     pages: [],
     interviewReports: [],
     pagesFailed: [],
+    searchUsed: '',
     notes: [],
     hiringPagesFound: [],
   };
@@ -338,6 +355,10 @@ export async function runKitPipeline(
   step('Planning the schedule');
 
   const context: PipelineContext = { digest, counters };
+  const researchDetail: PipelineResearch = {
+    pagesFailed: researchResult.pagesFailed,
+    searchUsed: researchResult.searchUsed,
+  };
 
   // Completion-blocking: the content is preserved for inspection, but the
   // status prevents it being reported as a finished kit.
@@ -349,6 +370,7 @@ export async function runKitPipeline(
       usage,
       passes,
       context,
+      research: researchDetail,
       error: {
         code: 'COVERAGE_INCOMPLETE',
         message: `${coverage.uncoveredMustIds.length} must-have requirement(s) still have no question after ${passes} coverage pass(es): ${coverage.uncoveredMustIds.join(', ')}`,
@@ -356,5 +378,13 @@ export async function runKitPipeline(
     };
   }
 
-  return { status: 'ok', kit: validation.kit, notes, usage, passes, context };
+  return {
+    status: 'ok',
+    kit: validation.kit,
+    notes,
+    usage,
+    passes,
+    context,
+    research: researchDetail,
+  };
 }

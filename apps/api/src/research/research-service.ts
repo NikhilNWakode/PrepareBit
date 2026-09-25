@@ -18,6 +18,13 @@ export interface ResearchResult {
   pages: { url: string; title: string; text: string; hiringScore: number }[];
   interviewReports: InterviewSearchResult[];
   pagesFailed: FailedSource[];
+  /**
+   * Which search provider answered, or `none`. Reported rather than discarded:
+   * "based on the company's own pages" and "based on the company's pages and
+   * public discussion" are different claims, and a reader weighing a fact is
+   * entitled to know which one they are being given.
+   */
+  searchUsed: string;
   notes: string[];
   hiringPagesFound: string[];
 }
@@ -85,6 +92,10 @@ export async function research(
     pages: site.pages,
     interviewReports: interview.results,
     pagesFailed: site.pagesFailed,
+    // Empty rather than the `none` sentinel: "no search contributed" is what
+    // every kit built before this field existed already stores, and one
+    // meaning should not have two encodings.
+    searchUsed: interview.providerUsed === EMPTY_PROVIDER.name ? '' : interview.providerUsed,
     notes: [...site.notes, ...interview.notes],
     hiringPagesFound: site.hiringPagesFound,
   };

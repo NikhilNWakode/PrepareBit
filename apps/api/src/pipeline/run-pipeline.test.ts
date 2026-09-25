@@ -410,3 +410,71 @@ describe('runKitPipeline', () => {
     expect(outcome.kit.schedule.days).toHaveLength(days);
   });
 });
+
+/**
+ * These two travelled no further than the pipeline until now, so the caller
+ * storing the kit hardcoded them empty — which made an unreachable site, a site
+ * refused by robots.txt and a site merely over the response cap indistinguishable
+ * to the reader.
+ */
+describe('retrieval detail', () => {
+  it('carries what could not be reached, and which search answered, out of the pipeline', async () => {
+    const crawler: CompanyCrawler = {
+      crawl: () =>
+        Promise.resolve({
+          pages: [
+            {
+              url: 'https://acme.example/',
+              title: 'Acme',
+              text: 'We build routing software.',
+              hiringScore: 0,
+            },
+          ],
+          pagesFailed: [{ url: 'https://acme.example/blog', reason: 'too-large: > 1500000 bytes' }],
+          notes: [],
+          hiringPagesFound: [],
+        }),
+    };
+
+    const outcome = await runKitPipeline(
+      { jobDescription: JOB_DESCRIPTION, companyUrl: 'https://acme.example/', days: 5 },
+      {
+        provider: createFakeProvider(respondByStage()),
+        crawler,
+        searchProviders: [
+          {
+            name: 'duckduckgo',
+            search: () =>
+              Promise.resolve([
+                {
+                  title: 'Acme interview',
+                  url: 'https://reports.example/acme',
+                  snippet: 'Four stages.',
+                  source: 'duckduckgo',
+                },
+              ]),
+          },
+        ],
+        now: () => new Date('2026-09-24T09:00:00Z'),
+      },
+    );
+
+    expect(outcome.status).toBe('ok');
+    if (outcome.status === 'failed') return;
+
+    expect(outcome.research.pagesFailed).toEqual([
+      { url: 'https://acme.example/blog', reason: 'too-large: > 1500000 bytes' },
+    ]);
+    expect(outcome.research.searchUsed).toBe('duckduckgo');
+  });
+
+  it('reports no search rather than a sentinel when none contributed', async () => {
+    const outcome = await run();
+
+    expect(outcome.status).toBe('ok');
+    if (outcome.status === 'failed') return;
+
+    expect(outcome.research.searchUsed).toBe('');
+    expect(outcome.research.pagesFailed).toEqual([]);
+  });
+});

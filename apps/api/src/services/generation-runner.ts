@@ -3,6 +3,7 @@ import type { LlmProvider } from '../ai/llm-provider.js';
 import { logger } from '../logger.js';
 import { runKitPipeline } from '../pipeline/run-pipeline.js';
 import type { KitStatus } from '../repositories/models/kit.model.js';
+import type { CompanyCrawler } from '../retrieval/company-crawler.js';
 import { kitRepository, type KitInput } from '../repositories/kit.repository.js';
 
 /**
@@ -31,6 +32,8 @@ function statusForStep(completed: number, total: number): KitStatus {
 export interface StartGenerationOptions {
   /** Injected by tests; production builds one provider per run. */
   provider?: LlmProvider;
+  /** Injected by tests; production lets the pipeline build the real crawler. */
+  crawler?: CompanyCrawler;
 }
 
 /**
@@ -60,6 +63,7 @@ export async function generateKit(
       { jobDescription: input.jd, companyUrl: input.company_url, days: input.days },
       {
         provider,
+        ...(options.crawler ? { crawler: options.crawler } : {}),
         onProgress: (step, completed, total) => {
           // Fire-and-forget: a progress write that fails must not abort a
           // generation that is otherwise going fine.
@@ -105,8 +109,11 @@ export async function generateKit(
       context: { digest: outcome.context.digest },
       research: {
         pagesUsed: outcome.kit.source.pages_used,
-        pagesFailed: [],
-        searchUsed: '',
+        // Previously hardcoded empty, which meant an unreachable site, one
+        // refused by robots.txt and one merely over the response cap all
+        // reached the user as the same sentence.
+        pagesFailed: outcome.research.pagesFailed,
+        searchUsed: outcome.research.searchUsed,
         notes: outcome.notes,
       },
     });

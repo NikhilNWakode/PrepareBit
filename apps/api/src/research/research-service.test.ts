@@ -141,6 +141,9 @@ describe('research', () => {
     expect(outcome.pages).toHaveLength(1);
     expect(outcome.interviewReports).toHaveLength(1);
     expect(outcome.pagesFailed).toHaveLength(1);
+    // The provider that answered is reported, not discarded: a fact from public
+    // discussion and a fact from the company's own site are different claims.
+    expect(outcome.searchUsed).toBe('tavily');
     expect(outcome.hiringPagesFound).toEqual([]);
     expect(outcome.notes.join(' ')).toMatch(/no page describing the hiring/i);
   });
@@ -168,5 +171,8 @@ describe('research', () => {
 
     expect(outcome.pages).toHaveLength(1);
     expect(outcome.interviewReports).toEqual([]);
+    // Empty, not the `none` sentinel, so "no search contributed" has exactly one
+    // encoding and the interface never says "via none".
+    expect(outcome.searchUsed).toBe('');
   });
 });

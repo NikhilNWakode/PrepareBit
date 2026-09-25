@@ -81,11 +81,50 @@ function GroupBlock({ group }: { group: Group }) {
   );
 }
 
+/**
+ * Turns a retrieval failure into something a candidate can act on.
+ *
+ * The stored reason is the machine one (`too-large: > 1500000 bytes`), which is
+ * right for a log and wrong for a person. Without this, a site that was blocked,
+ * one that timed out and one that was merely too big all reach the reader as the
+ * same shrug — and only one of those is worth retrying.
+ */
+function describeFailure(reason: string): string {
+  const [kind, detail = ''] = [
+    reason.slice(0, reason.indexOf(': ')) || reason,
+    reason.slice(reason.indexOf(': ') + 2),
+  ];
+
+  switch (kind) {
+    case 'too-large':
+      return 'the page was larger than this app will download';
+    case 'timeout':
+      return 'the site did not respond in time';
+    case 'network-error':
+      return 'the site could not be reached';
+    case 'http-error':
+      return `the site returned ${detail}`;
+    case 'blocked-url':
+      return detail === 'private-address'
+        ? 'the address is private, so it was not fetched'
+        : `the address was not one this app will fetch (${detail})`;
+    case 'unsupported-content-type':
+      return 'the response was not a web page';
+    case 'too-many-redirects':
+      return 'the address redirected too many times';
+    case 'invalid-url':
+      return 'the address could not be read';
+    default:
+      return reason;
+  }
+}
+
 export function ResearchSection({ stored }: { stored: StoredKit }) {
   const [expanded, setExpanded] = useState(false);
 
   const digest = stored.context?.digest;
   const notes = stored.research.notes.filter((note) => note.trim().length > 0);
+  const failures = stored.research.pagesFailed;
   const sources = digest?.sources ?? [];
 
   /*
@@ -164,6 +203,26 @@ export function ResearchSection({ stored }: { stored: StoredKit }) {
                     className="max-w-[70ch] text-[0.8125rem] leading-relaxed text-muted"
                   >
                     {note}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {failures.length > 0 ? (
+            <div>
+              <h3 className="text-xs font-medium tracking-wide text-muted uppercase">
+                Pages that could not be read
+              </h3>
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {failures.map((failure) => (
+                  <li
+                    key={failure.url}
+                    className="max-w-[70ch] text-[0.8125rem] leading-relaxed text-muted"
+                  >
+                    <span className="font-mono text-xs break-all">{failure.url}</span>
+                    {' — '}
+                    {describeFailure(failure.reason)}
                   </li>
                 ))}
               </ul>

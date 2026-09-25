@@ -7,6 +7,7 @@ import {
   connectTestDatabase,
   disconnectTestDatabase,
 } from '../test-support/database.js';
+import type { CompanyCrawler } from '../retrieval/company-crawler.js';
 import { generateKit } from './generation-runner.js';
 
 /**
@@ -146,6 +147,35 @@ describe.skipIf(!database.available)('generateKit', () => {
   });
 
   /** An incomplete kit is still a kit; the gap travels with it. */
+  /**
+   * The reason a page was skipped used to stop at the pipeline boundary and was
+   * stored as an empty list, so the interface could only ever say "no pages
+   * could be retrieved" — the same sentence for a site that was unreachable and
+   * one that was merely too large to download.
+   */
+  it('stores why a page could not be read, rather than an empty list', async () => {
+    const kitId = await seedKit();
+    const crawler: CompanyCrawler = {
+      crawl: () =>
+        Promise.resolve({
+          pages: [],
+          pagesFailed: [{ url: 'https://acme.example/', reason: 'too-large: > 1500000 bytes' }],
+          notes: [],
+          hiringPagesFound: [],
+        }),
+    };
+
+    await generateKit(kitId, INPUT, {
+      provider: createFakeProvider((call) => stageResponse(call)),
+      crawler,
+    });
+
+    const stored = await reload(kitId);
+    expect(stored?.research.pagesFailed).toEqual([
+      { url: 'https://acme.example/', reason: 'too-large: > 1500000 bytes' },
+    ]);
+  });
+
   it('stores an incomplete result as completed, with the coverage gap intact', async () => {
     const kitId = await seedKit();
 
