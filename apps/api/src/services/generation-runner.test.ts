@@ -159,7 +159,7 @@ describe.skipIf(!database.available)('generateKit', () => {
       crawl: () =>
         Promise.resolve({
           pages: [],
-          pagesFailed: [{ url: 'https://acme.example/', reason: 'too-large: > 1500000 bytes' }],
+          pagesFailed: [{ url: 'https://acme.example/', reason: 'too-large: > 3000000 bytes' }],
           notes: [],
           hiringPagesFound: [],
         }),
@@ -172,7 +172,7 @@ describe.skipIf(!database.available)('generateKit', () => {
 
     const stored = await reload(kitId);
     expect(stored?.research.pagesFailed).toEqual([
-      { url: 'https://acme.example/', reason: 'too-large: > 1500000 bytes' },
+      { url: 'https://acme.example/', reason: 'too-large: > 3000000 bytes' },
     ]);
   });
 

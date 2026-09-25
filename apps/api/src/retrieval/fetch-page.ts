@@ -13,7 +13,14 @@ export const USER_AGENT =
   'InterviewPrepKitBot/1.0 (+https://github.com/NikhilNWakode/PrepareBit; research crawler)';
 
 export const REQUEST_TIMEOUT_MS = 8_000;
-export const MAX_RESPONSE_BYTES = 1_500_000;
+/**
+ * Measured, not guessed. At 1.5MB the crawler was refusing the single most
+ * useful page on several sites: Vercel's careers page (1,504,772 bytes) missed
+ * by under 5KB, and GitLab's hiring handbook (2,332,776) by far more. 3MB
+ * clears every page that has actually been lost, with the largest at 78% of the
+ * cap. The guard still exists: it is a bound on one response, not an invitation.
+ */
+export const MAX_RESPONSE_BYTES = 3_000_000;
 export const MAX_REDIRECTS = 3;
 
 const ALLOWED_CONTENT_TYPES = ['text/html', 'application/xhtml+xml', 'text/plain'];

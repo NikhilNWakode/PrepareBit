@@ -430,7 +430,7 @@ describe('retrieval detail', () => {
               hiringScore: 0,
             },
           ],
-          pagesFailed: [{ url: 'https://acme.example/blog', reason: 'too-large: > 1500000 bytes' }],
+          pagesFailed: [{ url: 'https://acme.example/blog', reason: 'too-large: > 3000000 bytes' }],
           notes: [],
           hiringPagesFound: [],
         }),
@@ -463,7 +463,7 @@ describe('retrieval detail', () => {
     if (outcome.status === 'failed') return;
 
     expect(outcome.research.pagesFailed).toEqual([
-      { url: 'https://acme.example/blog', reason: 'too-large: > 1500000 bytes' },
+      { url: 'https://acme.example/blog', reason: 'too-large: > 3000000 bytes' },
     ]);
     expect(outcome.research.searchUsed).toBe('duckduckgo');
   });

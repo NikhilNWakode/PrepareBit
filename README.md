@@ -328,7 +328,7 @@ last-two-labels heuristic gets `example.co.uk` wrong — it would treat `co.uk` 
 domain and let a crawl wander into an unrelated company. Hosts with no public suffix, such
 as the `localhost` fixture server, fall back to an exact hostname match.
 
-Crawling is bounded by page count (8), depth (2), response size (1.5MB), timeout (8s) and a
+Crawling is bounded by page count (8), depth (2), response size (3MB), timeout (8s) and a
 politeness delay between requests. URLs are normalised before deduplication, and relative
 links are resolved against the page they came from — required, because the batch entry
 point runs against a local address.

@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MAX_RESPONSE_BYTES } from '../retrieval/fetch-page.js';
 
 /**
  * Serves the fixture company sites over real HTTP.
@@ -63,8 +64,11 @@ export function createFixtureServer(): Server {
     }
 
     if (path === '/broken/huge') {
+      // Derived from the cap rather than hardcoded: a literal here silently
+      // stopped being "huge" the moment the cap was raised, and the test that
+      // depends on it went green for the wrong reason.
       response.writeHead(200, { 'content-type': 'text/html' });
-      response.end(`<html><body>${'x'.repeat(2_000_000)}</body></html>`);
+      response.end(`<html><body>${'x'.repeat(MAX_RESPONSE_BYTES + 1_000)}</body></html>`);
       return;
     }
 

@@ -84,7 +84,7 @@ function GroupBlock({ group }: { group: Group }) {
 /**
  * Turns a retrieval failure into something a candidate can act on.
  *
- * The stored reason is the machine one (`too-large: > 1500000 bytes`), which is
+ * The stored reason is the machine one (`too-large: > 3000000 bytes`), which is
  * right for a log and wrong for a person. Without this, a site that was blocked,
  * one that timed out and one that was merely too big all reach the reader as the
  * same shrug — and only one of those is worth retrying.
