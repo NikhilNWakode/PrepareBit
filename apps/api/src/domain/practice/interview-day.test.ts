@@ -119,6 +119,27 @@ describe('requirementSubject', () => {
     ['Deep knowledge of distributed systems', 'distributed systems'],
     ['Proven track record of leading incident response', 'leading incident response'],
     ['Ability to work across teams', 'work across teams'],
+    /*
+     * Imperative phrasing, taken verbatim from a kit generated for a real
+     * posting. Every pattern is anchored, so the leading verb used to block the
+     * match behind it and the untouched clause was mail-merged into the
+     * question the candidate was told to ask.
+     */
+    [
+      'Have at least 4 years of experience shipping user-facing product features',
+      'user-facing product features',
+    ],
+    ['Be proficient in React and TypeScript', 'React and TypeScript'],
+    // "working" is still a qualifier when the noun it qualifies follows.
+    ['Working knowledge of distributed systems', 'distributed systems'],
+    [
+      'Have experience with real-time collaborative editing using CRDTs or OT',
+      'real-time collaborative editing using CRDTs or OT',
+    ],
+    [
+      'Be comfortable working directly with designers on ambiguous problems',
+      'working directly with designers on ambiguous problems',
+    ],
   ])('reduces %j to its subject', (text, expected) => {
     expect(requirementSubject(text)).toBe(expected);
   });
@@ -129,7 +150,7 @@ describe('requirementSubject', () => {
   });
 
   it('never strips a phrase down to nothing', () => {
-    for (const text of ['Experience', '5 years', 'Strong', 'Comfortable']) {
+    for (const text of ['Experience', '5 years', 'Strong', 'Comfortable', 'Have', 'Be']) {
       expect(requirementSubject(text).length).toBeGreaterThan(0);
     }
   });

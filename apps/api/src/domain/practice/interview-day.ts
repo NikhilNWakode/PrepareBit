@@ -83,10 +83,28 @@ function lowerFirst(text: string): string {
  * unchanged, which reads a little stiffly but never reads as nonsense.
  */
 const QUALIFIERS: RegExp[] = [
-  /^(?:at least |over |more than |a minimum of )?(?:\d+\+?|one|two|three|four|five|six|seven|eight|nine|ten)(?:\+)? years?(?: of)?(?: (?:professional|commercial|industry|hands-on))?(?: experience)?(?: (?:with|in|of|building|using|working on|developing))?\s+/i,
-  /^(?:strong|deep|solid|excellent|exceptional|extensive|demonstrable|proven|advanced|working)\s+/i,
+  /*
+   * A posting writes its requirements either as noun phrases ("5+ years of
+   * experience with X") or as instructions to the candidate ("Have 5+ years of
+   * experience with X", "Be comfortable with X"). Which one a model emits
+   * varies between kits, and every pattern below is anchored, so an unstripped
+   * "Have " or "Be " blocks the match that would otherwise fire and the whole
+   * clause ends up mail-merged into the question.
+   */
+  /^(?:have|be|possess|demonstrate|bring)\s+/i,
+  /^(?:at least |over |more than |a minimum of )?(?:\d+\+?|one|two|three|four|five|six|seven|eight|nine|ten)(?:\+)? years?(?: of)?(?: (?:professional|commercial|industry|hands-on))?(?: experience)?(?: (?:with|in|of|building|using|working on|developing|shipping|delivering|designing|maintaining|operating|owning))?\s+/i,
+  /^(?:strong|deep|solid|excellent|exceptional|extensive|demonstrable|proven|advanced)\s+/i,
+  /*
+   * "working" qualifies a noun ("working knowledge of X") and is not an
+   * adjective on its own, so it is stripped only when that noun follows.
+   * Listed bare it also ate the verb in "comfortable working directly with
+   * designers", leaving a question that began "make room for directly with".
+   */
+  /^working (?:knowledge|familiarity|understanding|proficiency)(?: (?:of|in|with))?\s+/i,
   /^(?:proficiency|expertise|experience|knowledge|skills?|familiarity|background|fluency|competency|understanding)(?: (?:with|in|of|owning|building|using|running|leading|working on))?\s+/i,
   /^(?:comfortable|confident|competent|hands-on|adept|skilled)(?: (?:with|in|at))?\s+/i,
+  // The adjective forms of the nouns above: "proficient in" beside "proficiency in".
+  /^(?:proficient|experienced|fluent|versed|knowledgeable|familiar)(?: (?:with|in|at|about))?\s+/i,
   /^(?:a )?(?:track record|history)(?: of| in| with)?\s+/i,
   /^(?:ability|able|willingness|willing)(?: to)?\s+/i,
   /^(?:bonus points for|nice to have|a plus:)\s+/i,
