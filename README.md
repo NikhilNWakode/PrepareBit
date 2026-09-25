@@ -4,9 +4,6 @@ Turns a pasted job description, a company website and a number of days before th
 interview into a structured, reshapeable interview preparation kit: a company brief,
 a role breakdown, a categorised question bank, flashcards and a day-by-day schedule.
 
-> **Status:** feature-complete. Generation, the builder, practice and the interview-day
-> briefing all work end to end, with 579 tests. Not yet deployed — see
-> [Deployment](#deployment).
 
 ## Tech stack
 
