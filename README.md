@@ -97,16 +97,23 @@ New → Web Service → connect this repository. Root directory stays the repo r
 
 ```bash
 # Build
-npm ci && npm run build --workspace @prep/shared && npm run build --workspace @prep/api
+npm ci --include=dev && npm run build --workspace @prep/shared && npm run build --workspace @prep/api
 
 # Start
 node apps/api/dist/server.js
 ```
 
-> **The one real trap.** `@prep/shared` resolves through the npm workspace symlink to
+> **`--include=dev` is load-bearing.** `NODE_ENV=production` is set below, and npm reads it
+> as `omit=dev` — so a plain `npm ci` installs no devDependencies, which is where
+> TypeScript and `@types/node` live. The build then dies on
+> `TS2688: Cannot find type definition file for 'node'`, which reads like a tsconfig problem
+> and is really a dependency one. The flag overrides it explicitly, and the runtime still
+> sees `NODE_ENV=production`, which is what actually matters.
+
+> **Build order matters too.** `@prep/shared` resolves through the npm workspace symlink to
 > `packages/shared/dist`. If it has not been compiled, the API fails at import time with a
-> module-not-found that points at `node_modules` rather than at the build order. Build
-> shared first, always.
+> module-not-found that points at `node_modules` rather than at the build order. (The
+> repository's `postinstall` builds it, so this is belt and braces.)
 
 Health check path: `/health`. Environment:
 
